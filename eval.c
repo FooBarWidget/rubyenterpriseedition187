@@ -11528,7 +11528,7 @@ rb_thread_join(thread, limit)
     double limit;
 {
     if (limit < 0) limit = DELAY_INFTY;
-    return rb_thread_join0(rb_thread_check(thread), limit);
+    return rb_thread_join0(THREAD_DATA(thread), limit);
 }
 
 
@@ -11583,7 +11583,7 @@ rb_thread_join_m(argc, argv, thread)
 
     rb_scan_args(argc, argv, "01", &limit);
     if (!NIL_P(limit)) delay = rb_num2dbl(limit);
-    if (!rb_thread_join0(rb_thread_check(thread), delay))
+    if (!rb_thread_join0(THREAD_DATA(thread), delay))
 	return Qnil;
     return thread;
 }
@@ -11691,7 +11691,7 @@ VALUE
 rb_thread_wakeup_alive(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (th->status == THREAD_KILLED)
 	return Qnil;
@@ -11766,7 +11766,7 @@ VALUE
 rb_thread_kill(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     rb_kill_thread(th, 0);
     return thread;
@@ -11790,7 +11790,7 @@ static VALUE
 rb_thread_kill_bang(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
     rb_kill_thread(th, THREAD_NO_ENSURE);
     return thread;
 }
@@ -11962,7 +11962,7 @@ static VALUE
 rb_thread_priority(thread)
     VALUE thread;
 {
-    return INT2NUM(rb_thread_check(thread)->priority);
+    return INT2NUM(THREAD_DATA(thread)->priority);
 }
 
 
@@ -11996,7 +11996,7 @@ rb_thread_priority_set(thread, prio)
     rb_thread_t th;
 
     rb_secure(4);
-    th = rb_thread_check(thread);
+    th = THREAD_DATA(thread);
 
     th->priority = NUM2INT(prio);
     rb_thread_schedule();
@@ -12022,7 +12022,7 @@ rb_thread_safe_level(thread)
 {
     rb_thread_t th;
 
-    th = rb_thread_check(thread);
+    th = THREAD_DATA(thread);
     if (th == curr_thread) {
 	return INT2NUM(ruby_safe_level);
     }
@@ -12099,7 +12099,7 @@ static VALUE
 rb_thread_abort_exc(thread)
     VALUE thread;
 {
-    return rb_thread_check(thread)->abort?Qtrue:Qfalse;
+    return THREAD_DATA(thread)->abort?Qtrue:Qfalse;
 }
 
 
@@ -12117,7 +12117,7 @@ rb_thread_abort_exc_set(thread, val)
     VALUE thread, val;
 {
     rb_secure(4);
-    rb_thread_check(thread)->abort = RTEST(val);
+    THREAD_DATA(thread)->abort = RTEST(val);
     return val;
 }
 
@@ -12136,7 +12136,7 @@ VALUE
 rb_thread_group(thread)
     VALUE thread;
 {
-    VALUE group = rb_thread_check(thread)->thgroup;
+    VALUE group = THREAD_DATA(thread)->thgroup;
     if (!group) {
 	group = Qnil;
     }
@@ -12522,7 +12522,7 @@ rb_thread_initialize(thread, args)
     if (!rb_block_given_p()) {
 	rb_raise(rb_eThreadError, "must be called with a block");
     }
-    th = rb_thread_check(thread);
+    th = THREAD_DATA(thread);
     if (th->stk_max) {
 	NODE *node = th->node;
 	if (!node) {
@@ -12571,7 +12571,7 @@ static VALUE
 rb_thread_value(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     while (!rb_thread_join0(th, DELAY_INFTY));
 
@@ -12606,7 +12606,7 @@ static VALUE
 rb_thread_status(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (rb_thread_dead(th)) {
 	if (!NIL_P(th->errinfo) && (th->flags & RAISED_EXCEPTION))
@@ -12634,7 +12634,7 @@ VALUE
 rb_thread_alive_p(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (rb_thread_dead(th)) return Qfalse;
     return Qtrue;
@@ -12657,7 +12657,7 @@ static VALUE
 rb_thread_stop_p(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (rb_thread_dead(th)) return Qtrue;
     if (th->status == THREAD_STOPPED) return Qtrue;
@@ -12891,7 +12891,7 @@ rb_thread_raise_m(argc, argv, thread)
     VALUE *argv;
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (ruby_safe_level > th->safe) {
 	rb_secure(4);
@@ -12908,7 +12908,7 @@ rb_thread_local_aref(thread, id)
     rb_thread_t th;
     VALUE val;
 
-    th = rb_thread_check(thread);
+    th = THREAD_DATA(thread);
     if (ruby_safe_level >= 4 && th != curr_thread) {
 	rb_raise(rb_eSecurityError, "Insecure: thread locals");
     }
@@ -12954,7 +12954,7 @@ rb_thread_local_aset(thread, id, val)
     ID id;
     VALUE val;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (ruby_safe_level >= 4 && th != curr_thread) {
 	rb_raise(rb_eSecurityError, "Insecure: can't modify thread locals");
@@ -13007,7 +13007,7 @@ static VALUE
 rb_thread_key_p(thread, id)
     VALUE thread, id;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
 
     if (!th->locals) return Qfalse;
     if (st_lookup(th->locals, rb_to_id(id), 0))
@@ -13043,7 +13043,7 @@ static VALUE
 rb_thread_keys(thread)
     VALUE thread;
 {
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
     VALUE ary = rb_ary_new();
 
     if (th->locals) {
@@ -13064,7 +13064,7 @@ rb_thread_inspect(thread)
     VALUE thread;
 {
     const char *cname = rb_obj_classname(thread);
-    rb_thread_t th = rb_thread_check(thread);
+    rb_thread_t th = THREAD_DATA(thread);
     const char *status = thread_status_name(th->status);
     VALUE str;
     size_t len = strlen(cname)+7+16+9+1;
@@ -13113,16 +13113,6 @@ cc_mark(cc)
     thread_mark(cc);
 }
 
-static rb_thread_t
-rb_cont_check(data)
-    VALUE data;
-{
-    if (TYPE(data) != T_DATA || RDATA(data)->dmark != (RUBY_DATA_FUNC)cc_mark) {
-	rb_raise(rb_eTypeError, "wrong argument type %s (expected Continuation)",
-		 rb_obj_classname(data));
-    }
-    return (rb_thread_t)RDATA(data)->data;
-}
 
 /*
  *  Document-class: Continuation
@@ -13244,7 +13234,7 @@ rb_cont_call(argc, argv, cont)
     VALUE *argv;
     VALUE cont;
 {
-    rb_thread_t th = rb_cont_check(cont);
+    rb_thread_t th = THREAD_DATA(cont);
 
     if (th->thread != curr_thread->thread) {
 	rb_raise(rb_eRuntimeError, "continuation called across threads");
