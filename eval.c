@@ -10404,15 +10404,23 @@ timeofday()
     return (double)tv.tv_sec + (double)tv.tv_usec * 1e-6;
 }
 
-#define STACK(addr) (th->stk_pos<(VALUE*)(addr) && (VALUE*)(addr)<th->stk_pos+th->stk_len)
-#define ADJ(addr) (void*)(STACK(addr)?(((VALUE*)(addr)-th->stk_pos)+th->stk_ptr):(VALUE*)(addr))
+extern VALUE *rb_gc_stack_start;
+#ifdef __ia64
+extern VALUE *rb_gc_register_stack_start;
+#endif
+
+#define ADJ(addr) \
+   if ((size_t)((void *)addr - stkBase) < stkSize) addr=(void *)addr + stkShift
 static void
 thread_mark(th)
     rb_thread_t th;
 {
     struct FRAME *frame;
     struct BLOCK *block;
-
+    void *stkBase;
+    ptrdiff_t stkShift;
+    size_t stkSize;
+    
     rb_gc_mark(th->result);
     rb_gc_mark(th->thread);
     if (th->join) rb_gc_mark(th->join->thread);
@@ -10446,15 +10454,26 @@ thread_mark(th)
 	}
 #endif
     }
+    
+    stkBase = (void *)rb_gc_stack_start;
+    stkSize = th->stk_len * sizeof(VALUE);
+#if STACK_GROW_DIRECTION == 0
+    if ((VALUE *)&th < rb_gc_stack_start)
+#endif
+#if STACK_GROW_DIRECTION <= 0
+      stkBase -= stkSize;
+#endif
+    stkShift = (void *)th->stk_ptr - stkBase;
+    
     frame = th->frame;
     while (frame && frame != top_frame) {
-	frame = ADJ(frame);
+	ADJ(frame);
 	rb_gc_mark_frame(frame);
 	if (frame->tmp) {
 	    struct FRAME *tmp = frame->tmp;
 
 	    while (tmp && tmp != top_frame) {
-		tmp = ADJ(tmp);
+		ADJ(tmp);
 		rb_gc_mark_frame(tmp);
 		tmp = tmp->prev;
 	    }
@@ -10463,7 +10482,7 @@ thread_mark(th)
     }
     block = th->block;
     while (block) {
-	block = ADJ(block);
+	ADJ(block);
 	rb_gc_mark_frame(&block->frame);
 	block = block->prev;
     }
@@ -10578,11 +10597,6 @@ static int   th_sig, th_safe;
 #define RESTORE_RAISE		5
 #define RESTORE_SIGNAL		6
 #define RESTORE_EXIT		7
-
-extern VALUE *rb_gc_stack_start;
-#ifdef __ia64
-extern VALUE *rb_gc_register_stack_start;
-#endif
 
 static void
 rb_thread_save_context(th)
