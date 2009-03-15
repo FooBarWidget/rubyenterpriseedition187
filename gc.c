@@ -43,25 +43,6 @@ void rb_io_fptr_finalize _((struct rb_io_t*));
 int _setjmp(), _longjmp();
 #endif
 
-/* Make alloca work the best possible way.  */
-#ifdef __GNUC__
-# ifndef atarist
-#  ifndef alloca
-#   define alloca __builtin_alloca
-#  endif
-# endif /* atarist */
-#else
-# ifdef HAVE_ALLOCA_H
-#  include <alloca.h>
-# else
-#  ifndef _AIX
-#   ifndef alloca /* predefined by HP cc +Olibcalls */
-void *alloca ();
-#   endif
-#  endif /* AIX */
-# endif /* HAVE_ALLOCA_H */
-#endif /* __GNUC__ */
-
 #ifndef GC_MALLOC_LIMIT
 #if defined(MSDOS) || defined(__human68k__)
 #define GC_MALLOC_LIMIT 200000
@@ -69,6 +50,16 @@ void *alloca ();
 #define GC_MALLOC_LIMIT (2000000*sizeof(VALUE))
 #endif
 #endif
+
+#ifndef GC_LEVEL_MAX  /*maximum # of VALUEs on 'C' stack during GC*/
+#define GC_LEVEL_MAX  8000
+#endif
+#ifndef GC_STACK_PAD
+#define GC_STACK_PAD  200  /* extra padding VALUEs for GC stack */
+#endif
+#define GC_STACK_MAX  (GC_LEVEL_MAX+GC_STACK_PAD)
+
+static VALUE *stack_limit, *gc_stack_limit;
 
 static size_t malloc_increase = 0;
 static size_t malloc_limit = GC_MALLOC_LIMIT;
@@ -171,6 +162,21 @@ static VALUE gc_growth(VALUE mod)
 {
   return ULONG2NUM(malloc_increase);
 }
+
+
+/*
+ *  call-seq:
+ *     GC.exorcise
+ *
+ *  Purge ghost references from recently freed stack space
+ *
+ *  <i>Only available when MBARI_API extentions are enabled at build time</i>
+ */
+static VALUE gc_exorcise(VALUE mod)
+{
+  rb_gc_wipe_stack();
+  return Qnil;
+}
 #endif
 
 /*
@@ -223,6 +229,9 @@ ruby_xmalloc(size)
 	    rb_memerror();
 	}
     }
+#if STACK_WIPE_SITES & 0x100
+    rb_gc_update_stack_extent();
+#endif
     return mem;
 }
 
@@ -262,6 +271,9 @@ ruby_xrealloc(ptr, size)
 	    rb_memerror();
         }
     }
+#if STACK_WIPE_SITES & 0x200
+    rb_gc_update_stack_extent();
+#endif
     return mem;
 }
 
@@ -536,6 +548,9 @@ VALUE *rb_gc_stack_start = 0;
 VALUE *rb_gc_register_stack_start = 0;
 #endif
 
+VALUE *rb_gc_stack_end = (VALUE *)STACK_GROW_DIRECTION;
+
+
 #ifdef DJGPP
 /* set stack size (http://www.delorie.com/djgpp/v2faq/faq15_9.html) */
 unsigned int _stklen = 0x180000; /* 1.5 kB */
@@ -553,26 +568,20 @@ static size_t STACK_LEVEL_MAX = 655300;
 # define STACK_LEVEL_MAX 655300
 #endif
 
-#ifdef C_ALLOCA
-# define SET_STACK_END VALUE stack_end; alloca(0);
+#ifndef nativeAllocA
+  /* portable way to return an approximate stack pointer */
+NOINLINE(VALUE *__sp(void));
+VALUE *__sp(void) {
+  VALUE tos;
+  return &tos;
+}
+# define SET_STACK_END VALUE stack_end
 # define STACK_END (&stack_end)
 #else
-# if defined(__GNUC__) && defined(USE_BUILTIN_FRAME_ADDRESS) && !defined(__ia64)
-#  if ( __GNUC__ == 3 && __GNUC_MINOR__ > 0 ) || __GNUC__ > 3
-__attribute__ ((noinline))
-#  endif
-static void
-stack_end_address(VALUE **stack_end_p)
-{
-    VALUE stack_end;
-    *stack_end_p = &stack_end;
-}
-#  define  SET_STACK_END    VALUE *stack_end; stack_end_address(&stack_end)
-# else
-#  define  SET_STACK_END    VALUE *stack_end = alloca(1)
-# endif
-# define STACK_END (stack_end)
+# define SET_STACK_END ((void)0)
+# define STACK_END __sp()
 #endif
+
 #if STACK_GROW_DIRECTION < 0
 # define STACK_LENGTH  (rb_gc_stack_start - STACK_END)
 #elif STACK_GROW_DIRECTION > 0
@@ -582,48 +591,66 @@ stack_end_address(VALUE **stack_end_p)
                                            : STACK_END - rb_gc_stack_start + 1)
 #endif
 #if STACK_GROW_DIRECTION > 0
-# define STACK_UPPER(x, a, b) a
+# define STACK_UPPER(a, b) a
 #elif STACK_GROW_DIRECTION < 0
-# define STACK_UPPER(x, a, b) b
+# define STACK_UPPER(a, b) b
 #else
-static int grow_direction;
+int rb_gc_stack_grow_direction;
 static int
 stack_grow_direction(addr)
     VALUE *addr;
 {
     SET_STACK_END;
-
-    if (STACK_END > addr) return grow_direction = 1;
-    return grow_direction = -1;
+    return rb_gc_stack_grow_direction = STACK_END > addr ? 1 : -1;
 }
-# define stack_growup_p(x) ((grow_direction ? grow_direction : stack_grow_direction(x)) > 0)
-# define STACK_UPPER(x, a, b) (stack_growup_p(x) ? a : b)
+# define STACK_UPPER(a, b) (rb_gc_stack_grow_direction > 0 ? a : b)
 #endif
 
-#define GC_WATER_MARK 512
-
-#define CHECK_STACK(ret) do {\
-    SET_STACK_END;\
-    (ret) = (STACK_LENGTH > STACK_LEVEL_MAX + GC_WATER_MARK);\
-} while (0)
-
 size_t
-ruby_stack_length(p)
-    VALUE **p;
+ruby_stack_length(base)
+    VALUE **base;
 {
     SET_STACK_END;
-    if (p) *p = STACK_UPPER(STACK_END, rb_gc_stack_start, STACK_END);
+    if (base) *base = STACK_UPPER(start, STACK_END);
     return STACK_LENGTH;
 }
 
 int
 ruby_stack_check()
 {
-    int ret;
-
-    CHECK_STACK(ret);
-    return ret;
+    SET_STACK_END;
+    return __stack_past(stack_limit, STACK_END);
 }
+
+/*
+  Zero memory that was (recently) part of the stack, but is no longer.
+  Invoke when stack is deep to mark its extent and when it's shallow to wipe it.
+*/
+#if STACK_WIPE_METHOD != 4
+#if STACK_WIPE_METHOD
+void rb_gc_wipe_stack(void)
+{
+  VALUE *stack_end = rb_gc_stack_end;
+  VALUE *sp = __sp();
+  rb_gc_stack_end = sp;
+#if STACK_WIPE_METHOD == 1
+#warning clearing of "ghost references" from the call stack has been disabled
+#elif STACK_WIPE_METHOD == 2  /* alloca ghost stack before clearing it */
+  if (__stack_past(sp, stack_end)) {
+    size_t bytes = __stack_depth((char *)stack_end, (char *)sp);
+    STACK_UPPER(sp = nativeAllocA(bytes), stack_end = nativeAllocA(bytes));
+    __stack_zero(stack_end, sp);
+  }
+#elif STACK_WIPE_METHOD == 3    /* clear unallocated area past stack pointer */
+  __stack_zero(stack_end, sp);  /* will crash if compiler pushes a temp. here */
+#else
+#error unsupported method of clearing ghost references from the stack
+#endif
+}
+#else
+#warning clearing of "ghost references" from the call stack completely disabled
+#endif
+#endif
 
 #define MARK_STACK_MAX 1024
 static VALUE mark_stack[MARK_STACK_MAX];
@@ -639,6 +666,17 @@ init_mark_stack()
 
 #define MARK_STACK_EMPTY (mark_stack_ptr == mark_stack)
 
+static inline void
+push_mark_stack(VALUE ptr)
+{
+    if (!mark_stack_overflow) {
+	if (mark_stack_ptr - mark_stack < MARK_STACK_MAX)
+	    *mark_stack_ptr++ = ptr;
+	else
+	    mark_stack_overflow = 1;
+    }
+}
+    
 static st_table *source_filenames;
 
 char *
@@ -682,22 +720,22 @@ sweep_source_filename(key, value)
     }
 }
 
-static void gc_mark _((VALUE ptr, int lev));
-static void gc_mark_children _((VALUE ptr, int lev));
+#define gc_mark(ptr) rb_gc_mark(ptr)
+static void gc_mark_children _((VALUE ptr));
 
 static void
 gc_mark_all()
 {
     RVALUE *p, *pend;
-    int i;
+    struct heaps_slot *heap = heaps+heaps_used;
 
     init_mark_stack();
-    for (i = 0; i < heaps_used; i++) {
-	p = heaps[i].slot; pend = p + heaps[i].limit;
+    while (--heap >= heaps) {
+	p = heap->slot; pend = p + heap->limit;
 	while (p < pend) {
 	    if ((p->as.basic.flags & FL_MARK) &&
 		(p->as.basic.flags != FL_MARK)) {
-		gc_mark_children((VALUE)p, 0);
+		gc_mark_children((VALUE)p);
 	    }
 	    p++;
 	}
@@ -707,194 +745,146 @@ gc_mark_all()
 static void
 gc_mark_rest()
 {
+    size_t stackLen = mark_stack_ptr - mark_stack;
+#ifdef nativeAllocA
+    VALUE *tmp_arry = nativeAllocA(stackLen*sizeof(VALUE));
+#else
     VALUE tmp_arry[MARK_STACK_MAX];
-    VALUE *p;
-
-    p = (mark_stack_ptr - mark_stack) + tmp_arry;
-    MEMCPY(tmp_arry, mark_stack, VALUE, MARK_STACK_MAX);
+#endif
+    VALUE *p = tmp_arry + stackLen;
+    
+    MEMCPY(tmp_arry, mark_stack, VALUE, stackLen);
 
     init_mark_stack();
-    while(p != tmp_arry){
-	p--;
-	gc_mark_children(*p, 0);
-    }
+    while(--p >= tmp_arry) gc_mark_children(*p);
 }
 
 static inline int
 is_pointer_to_heap(ptr)
     void *ptr;
 {
-    register RVALUE *p = RANY(ptr);
-    register RVALUE *heap_org;
-    register long i;
+    RVALUE *p = RANY(ptr);
+    struct heaps_slot *heap;
 
-    if (p < lomem || p > himem) return Qfalse;
-    if ((VALUE)p % sizeof(RVALUE) != 0) return Qfalse;
+    if (p < lomem || p > himem || (VALUE)p % sizeof(RVALUE)) return Qfalse;
 
     /* check if p looks like a pointer */
-    for (i=0; i < heaps_used; i++) {
-	heap_org = heaps[i].slot;
-	if (heap_org <= p && p < heap_org + heaps[i].limit)
-	    return Qtrue;
-    }
+    heap = heaps+heaps_used;
+    while (--heap >= heaps) 
+      if (p >= heap->slot && p < heap->slot + heap->limit)
+        return Qtrue;
     return Qfalse;
 }
 
 static void
 mark_locations_array(x, n)
-    register VALUE *x;
-    register long n;
+    VALUE *x;
+    size_t n;
 {
     VALUE v;
     while (n--) {
         v = *x;
 	if (is_pointer_to_heap((void *)v)) {
-	    gc_mark(v, 0);
+	    gc_mark(v);
 	}
 	x++;
     }
 }
 
-void
+inline void
 rb_gc_mark_locations(start, end)
     VALUE *start, *end;
 {
-    long n;
-
-    n = end - start;
-    mark_locations_array(start,n);
+    mark_locations_array(start,end - start);
 }
 
 static int
-mark_entry(key, value, lev)
+mark_entry(key, value)
     ID key;
     VALUE value;
-    int lev;
 {
-    gc_mark(value, lev);
+    gc_mark(value);
     return ST_CONTINUE;
-}
-
-static void
-mark_tbl(tbl, lev)
-    st_table *tbl;
-    int lev;
-{
-    if (!tbl) return;
-    st_foreach(tbl, mark_entry, lev);
 }
 
 void
 rb_mark_tbl(tbl)
     st_table *tbl;
 {
-    mark_tbl(tbl, 0);
+    if (!tbl) return;
+    st_foreach(tbl, mark_entry, 0);
 }
+#define mark_tbl(tbl)  rb_mark_tbl(tbl)
 
 static int
-mark_key(key, value, lev)
-    VALUE key, value;
-    int lev;
+mark_keyvalue(key, value)
+    VALUE key;
+    VALUE value;
 {
-    gc_mark(key, lev);
+    gc_mark(key);
+    gc_mark(value);
     return ST_CONTINUE;
 }
 
-static void
-mark_set(tbl, lev)
-    st_table *tbl;
-    int lev;
+static int
+mark_key(key, value)
+    VALUE key, value;
 {
-    if (!tbl) return;
-    st_foreach(tbl, mark_key, lev);
+    gc_mark(key);
+    return ST_CONTINUE;
 }
 
 void
 rb_mark_set(tbl)
     st_table *tbl;
 {
-    mark_set(tbl, 0);
-}
-
-static int
-mark_keyvalue(key, value, lev)
-    VALUE key;
-    VALUE value;
-    int lev;
-{
-    gc_mark(key, lev);
-    gc_mark(value, lev);
-    return ST_CONTINUE;
-}
-
-static void
-mark_hash(tbl, lev)
-    st_table *tbl;
-    int lev;
-{
     if (!tbl) return;
-    st_foreach(tbl, mark_keyvalue, lev);
+    st_foreach(tbl, mark_key, 0);
 }
+#define mark_set(tbl)  rb_mark_set(tbl)
 
 void
 rb_mark_hash(tbl)
     st_table *tbl;
 {
-    mark_hash(tbl, 0);
+    if (!tbl) return;
+    st_foreach(tbl, mark_keyvalue, 0);
 }
+#define mark_hash(tbl)  rb_mark_hash(tbl)
 
 void
 rb_gc_mark_maybe(obj)
     VALUE obj;
 {
     if (is_pointer_to_heap((void *)obj)) {
-	gc_mark(obj, 0);
+	gc_mark(obj);
     }
-}
-
-#define GC_LEVEL_MAX 250
-
-static void
-gc_mark(ptr, lev)
-    VALUE ptr;
-    int lev;
-{
-    register RVALUE *obj;
-
-    obj = RANY(ptr);
-    if (rb_special_const_p(ptr)) return; /* special const not marked */
-    if (obj->as.basic.flags == 0) return;       /* free cell */
-    if (obj->as.basic.flags & FL_MARK) return;  /* already marked */
-    obj->as.basic.flags |= FL_MARK;
-
-    if (lev > GC_LEVEL_MAX || (lev == 0 && ruby_stack_check())) {
-	if (!mark_stack_overflow) {
-	    if (mark_stack_ptr - mark_stack < MARK_STACK_MAX) {
-		*mark_stack_ptr = ptr;
-		mark_stack_ptr++;
-	    }
-	    else {
-		mark_stack_overflow = 1;
-	    }
-	}
-	return;
-    }
-    gc_mark_children(ptr, lev+1);
 }
 
 void
 rb_gc_mark(ptr)
     VALUE ptr;
 {
-    gc_mark(ptr, 0);
+    RVALUE *obj = RANY(ptr);
+    SET_STACK_END;
+    
+    if (rb_special_const_p(ptr)) return; /* special const not marked */
+    if (obj->as.basic.flags == 0) return;       /* free cell */
+    if (obj->as.basic.flags & FL_MARK) return;  /* already marked */
+    obj->as.basic.flags |= FL_MARK;
+
+    if (__stack_past(gc_stack_limit, STACK_END))
+      push_mark_stack(ptr);
+    else{
+      gc_mark_children(ptr);
+    }
 }
 
 static void
-gc_mark_children(ptr, lev)
+gc_mark_children(ptr)
     VALUE ptr;
-    int lev;
 {
-    register RVALUE *obj = RANY(ptr);
+    RVALUE *obj = RANY(ptr);
 
     goto marking;		/* skip */
 
@@ -928,7 +918,7 @@ gc_mark_children(ptr, lev)
 	  case NODE_RESCUE:
 	  case NODE_RESBODY:
 	  case NODE_CLASS:
-	    gc_mark((VALUE)obj->as.node.u2.node, lev);
+	    gc_mark((VALUE)obj->as.node.u2.node);
 	    /* fall through */
 	  case NODE_BLOCK:	/* 1,3 */
 	  case NODE_ARRAY:
@@ -941,7 +931,7 @@ gc_mark_children(ptr, lev)
 	  case NODE_CALL:
 	  case NODE_DEFS:
 	  case NODE_OP_ASGN1:
-	    gc_mark((VALUE)obj->as.node.u1.node, lev);
+	    gc_mark((VALUE)obj->as.node.u1.node);
 	    /* fall through */
 	  case NODE_SUPER:	/* 3 */
 	  case NODE_FCALL:
@@ -968,7 +958,7 @@ gc_mark_children(ptr, lev)
 	  case NODE_ALIAS:
 	  case NODE_VALIAS:
 	  case NODE_ARGS:
-	    gc_mark((VALUE)obj->as.node.u1.node, lev);
+	    gc_mark((VALUE)obj->as.node.u1.node);
 	    /* fall through */
 	  case NODE_METHOD:	/* 2 */
 	  case NODE_NOT:
@@ -1006,7 +996,7 @@ gc_mark_children(ptr, lev)
 	  case NODE_SCOPE:	/* 2,3 */
 	  case NODE_BLOCK_PASS:
 	  case NODE_CDECL:
-	    gc_mark((VALUE)obj->as.node.u3.node, lev);
+	    gc_mark((VALUE)obj->as.node.u3.node);
 	    ptr = (VALUE)obj->as.node.u2.node;
 	    goto again;
 
@@ -1039,25 +1029,26 @@ gc_mark_children(ptr, lev)
 
 	  default:		/* unlisted NODE */
 	    if (is_pointer_to_heap(obj->as.node.u1.node)) {
-		gc_mark((VALUE)obj->as.node.u1.node, lev);
+		gc_mark((VALUE)obj->as.node.u1.node);
 	    }
 	    if (is_pointer_to_heap(obj->as.node.u2.node)) {
-		gc_mark((VALUE)obj->as.node.u2.node, lev);
+		gc_mark((VALUE)obj->as.node.u2.node);
 	    }
 	    if (is_pointer_to_heap(obj->as.node.u3.node)) {
-		gc_mark((VALUE)obj->as.node.u3.node, lev);
+                ptr = (VALUE)obj->as.node.u3.node;
+                goto again;
 	    }
 	}
-	return;			/* no need to mark class. */
+        return;	/* no need to mark class. */
     }
 
-    gc_mark(obj->as.basic.klass, lev);
+    gc_mark(obj->as.basic.klass);
     switch (obj->as.basic.flags & T_MASK) {
       case T_ICLASS:
       case T_CLASS:
       case T_MODULE:
-	mark_tbl(obj->as.klass.m_tbl, lev);
-	mark_tbl(obj->as.klass.iv_tbl, lev);
+	mark_tbl(obj->as.klass.m_tbl);
+	mark_tbl(obj->as.klass.iv_tbl);
 	ptr = obj->as.klass.super;
 	goto again;
 
@@ -1067,17 +1058,16 @@ gc_mark_children(ptr, lev)
 	    goto again;
 	}
 	else {
-	    long i, len = obj->as.array.len;
 	    VALUE *ptr = obj->as.array.ptr;
-
-	    for (i=0; i < len; i++) {
-		gc_mark(*ptr++, lev);
+            VALUE *pend = ptr + obj->as.array.len;
+	    while (ptr < pend) {
+		gc_mark(*ptr++);
 	    }
 	}
 	break;
 
       case T_HASH:
-	mark_hash(obj->as.hash.tbl, lev);
+	mark_hash(obj->as.hash.tbl);
 	ptr = obj->as.hash.ifnone;
 	goto again;
 
@@ -1094,7 +1084,7 @@ gc_mark_children(ptr, lev)
 	break;
 
       case T_OBJECT:
-	mark_tbl(obj->as.object.iv_tbl, lev);
+	mark_tbl(obj->as.object.iv_tbl);
 	break;
 
       case T_FILE:
@@ -1112,7 +1102,7 @@ gc_mark_children(ptr, lev)
 	break;
 
       case T_VARMAP:
-	gc_mark(obj->as.varmap.val, lev);
+	gc_mark(obj->as.varmap.val);
 	ptr = (VALUE)obj->as.varmap.next;
 	goto again;
 
@@ -1122,19 +1112,17 @@ gc_mark_children(ptr, lev)
 	    VALUE *vars = &obj->as.scope.local_vars[-1];
 
 	    while (n--) {
-		gc_mark(*vars++, lev);
+		gc_mark(*vars++);
 	    }
 	}
 	break;
 
       case T_STRUCT:
 	{
-	    long len = obj->as.rstruct.len;
 	    VALUE *ptr = obj->as.rstruct.ptr;
-
-	    while (len--) {
-		gc_mark(*ptr++, lev);
-	    }
+            VALUE *pend = ptr + obj->as.rstruct.len;
+            while (ptr < pend)
+	       gc_mark(*ptr++);
 	}
 	break;
 
@@ -1215,7 +1203,7 @@ gc_sweep()
 	    p = heaps[i].slot; pend = p + heaps[i].limit;
 	    while (p < pend) {
 		if (!(p->as.basic.flags&FL_MARK) && BUILTIN_TYPE(p) == T_NODE)
-		    gc_mark((VALUE)p, 0);
+		    gc_mark((VALUE)p);
 		p++;
 	    }
 	}
@@ -1441,7 +1429,7 @@ void
 rb_gc_mark_frame(frame)
     struct FRAME *frame;
 {
-    gc_mark((VALUE)frame->node, 0);
+    gc_mark((VALUE)frame->node);
 }
 
 #ifdef __GNUC__
@@ -1480,11 +1468,10 @@ int rb_setjmp (rb_jmp_buf);
 #endif /* __GNUC__ */
 
 static void
-garbage_collect()
+garbage_collect_0(VALUE *top_frame)
 {
     struct gc_list *list;
-    struct FRAME * volatile frame; /* gcc 2.7.2.3 -O2 bug??  */
-    jmp_buf save_regs_gc_mark;
+    struct FRAME * frame;
     SET_STACK_END;
 
 #ifdef HAVE_NATIVETHREAD
@@ -1501,9 +1488,10 @@ garbage_collect()
     if (during_gc) return;
     during_gc++;
 
+    gc_stack_limit = __stack_grow(STACK_END, GC_LEVEL_MAX);
     init_mark_stack();
 
-    gc_mark((VALUE)ruby_current_node, 0);
+    gc_mark((VALUE)ruby_current_node);
 
     /* mark frame stack */
     for (frame = ruby_frame; frame; frame = frame->prev) {
@@ -1516,25 +1504,21 @@ garbage_collect()
 	    }
 	}
     }
-    gc_mark((VALUE)ruby_scope, 0);
-    gc_mark((VALUE)ruby_dyna_vars, 0);
+    gc_mark((VALUE)ruby_scope);
+    gc_mark((VALUE)ruby_dyna_vars);
     if (finalizer_table) {
-	mark_tbl(finalizer_table, 0);
+	mark_tbl(finalizer_table);
     }
 
-    FLUSH_REGISTER_WINDOWS;
-    /* This assumes that all registers are saved into the jmp_buf (and stack) */
-    rb_setjmp(save_regs_gc_mark);
-    mark_locations_array((VALUE*)save_regs_gc_mark, sizeof(save_regs_gc_mark) / sizeof(VALUE *));
 #if STACK_GROW_DIRECTION < 0
-    rb_gc_mark_locations((VALUE*)STACK_END, rb_gc_stack_start);
+    rb_gc_mark_locations(top_frame, rb_gc_stack_start);
 #elif STACK_GROW_DIRECTION > 0
-    rb_gc_mark_locations(rb_gc_stack_start, (VALUE*)STACK_END + 1);
+    rb_gc_mark_locations(rb_gc_stack_start, top_frame + 1);
 #else
-    if ((VALUE*)STACK_END < rb_gc_stack_start)
-	rb_gc_mark_locations((VALUE*)STACK_END, rb_gc_stack_start);
+    if (rb_gc_stack_grow_direction < 0)
+	rb_gc_mark_locations(top_frame, rb_gc_stack_start);
     else
-	rb_gc_mark_locations(rb_gc_stack_start, (VALUE*)STACK_END + 1);
+	rb_gc_mark_locations(rb_gc_stack_start, top_frame + 1);
 #endif
 #ifdef __ia64
     /* mark backing store (flushed register window on the stack) */
@@ -1574,8 +1558,38 @@ garbage_collect()
 	}
 	rb_gc_abort_threads();
     } while (!MARK_STACK_EMPTY);
-
     gc_sweep();
+}
+
+static void
+garbage_collect()
+{
+  jmp_buf save_regs_gc_mark;
+  VALUE *top;
+  FLUSH_REGISTER_WINDOWS;
+  /* This assumes that all registers are saved into the jmp_buf (and stack) */
+  rb_setjmp(save_regs_gc_mark);
+  top = __sp();
+
+#if STACK_WIPE_SITES & 0x400
+# ifdef nativeAllocA
+  if (__stack_past (top, stack_limit)) {
+  /* allocate a large frame to ensure app stack cannot grow into GC stack */
+    (volatile void*) nativeAllocA(__stack_depth((void*)stack_limit,(void*)top));
+  }  
+  garbage_collect_0(top);
+# else /* no native alloca() available */
+  garbage_collect_0(top);
+  {
+    VALUE *paddedLimit = __stack_grow(gc_stack_limit, GC_STACK_PAD);
+    if (__stack_past(rb_gc_stack_end, paddedLimit))
+      rb_gc_stack_end = paddedLimit;
+  }
+  rb_gc_wipe_stack();  /* wipe the whole stack area reserved for this gc */  
+# endif
+#else
+  garbage_collect_0(top);
+#endif
 }
 
 void
@@ -1602,6 +1616,7 @@ rb_gc_start()
     return Qnil;
 }
 
+
 void
 ruby_set_stack_size(size)
     size_t size;
@@ -1609,6 +1624,29 @@ ruby_set_stack_size(size)
 #ifndef STACK_LEVEL_MAX
     STACK_LEVEL_MAX = size / sizeof(VALUE);
 #endif
+    stack_limit = __stack_grow(rb_gc_stack_start, STACK_LEVEL_MAX-GC_STACK_MAX);
+}
+
+static void
+set_stack_size(void)
+{
+#ifdef HAVE_GETRLIMIT
+  struct rlimit rlim;
+  if (getrlimit(RLIMIT_STACK, &rlim) == 0) {
+    if (rlim.rlim_cur > 0 && rlim.rlim_cur != RLIM_INFINITY) {
+      size_t maxStackBytes = rlim.rlim_cur;
+      if (rlim.rlim_cur != maxStackBytes)
+        maxStackBytes = -1;
+      {
+        size_t space = maxStackBytes/5;
+        if (space > 1024*1024) space = 1024*1024;
+        ruby_set_stack_size(maxStackBytes - space);
+        return;
+      }
+    }
+  }
+#endif
+  ruby_set_stack_size(STACK_LEVEL_MAX*sizeof(VALUE));
 }
 
 void
@@ -1642,7 +1680,7 @@ Init_stack(addr)
     memset(&m, 0, sizeof(m));
     VirtualQuery(&m, &m, sizeof(m));
     rb_gc_stack_start =
-	STACK_UPPER((VALUE *)&m, (VALUE *)m.BaseAddress,
+	STACK_UPPER((VALUE *)m.BaseAddress,
 		    (VALUE *)((char *)m.BaseAddress + m.RegionSize) - 1);
 #elif defined(STACK_END_ADDRESS)
     {
@@ -1651,28 +1689,16 @@ Init_stack(addr)
     }
 #else
     if (!addr) addr = (void *)&addr;
-    STACK_UPPER(&addr, addr, ++addr);
+    STACK_UPPER(addr, ++addr);
     if (rb_gc_stack_start) {
-	if (STACK_UPPER(&addr,
-			rb_gc_stack_start > addr,
+	if (STACK_UPPER(rb_gc_stack_start > addr,
 			rb_gc_stack_start < addr))
 	    rb_gc_stack_start = addr;
 	return;
     }
     rb_gc_stack_start = addr;
 #endif
-#ifdef HAVE_GETRLIMIT
-    {
-	struct rlimit rlim;
-
-	if (getrlimit(RLIMIT_STACK, &rlim) == 0) {
-	    unsigned int space = rlim.rlim_cur/5;
-
-	    if (space > 1024*1024) space = 1024*1024;
-	    STACK_LEVEL_MAX = (rlim.rlim_cur - space) / sizeof(VALUE);
-	}
-    }
-#endif
+    set_stack_size();
 }
 
 void ruby_init_stack(VALUE *addr
@@ -1682,8 +1708,7 @@ void ruby_init_stack(VALUE *addr
     )
 {
     if (!rb_gc_stack_start ||
-        STACK_UPPER(&addr,
-                    rb_gc_stack_start > addr,
+        STACK_UPPER(rb_gc_stack_start > addr,
                     rb_gc_stack_start < addr)) {
         rb_gc_stack_start = addr;
     }
@@ -1694,16 +1719,7 @@ void ruby_init_stack(VALUE *addr
     }
 #endif
 #ifdef HAVE_GETRLIMIT
-    {
-        struct rlimit rlim;
-
-        if (getrlimit(RLIMIT_STACK, &rlim) == 0) {
-            unsigned int space = rlim.rlim_cur/5;
-
-            if (space > 1024*1024) space = 1024*1024;
-            STACK_LEVEL_MAX = (rlim.rlim_cur - space) / sizeof(VALUE);
-        }
-    }
+    set_stack_size();
 #elif defined _WIN32
     {
 	MEMORY_BASIC_INFORMATION mi;
@@ -1714,7 +1730,7 @@ void ruby_init_stack(VALUE *addr
 	    size = (char *)mi.BaseAddress - (char *)mi.AllocationBase;
 	    space = size / 5;
 	    if (space > 1024*1024) space = 1024*1024;
-	    STACK_LEVEL_MAX = (size - space) / sizeof(VALUE);
+	    ruby_set_stack_size(size - space);
 	}
     }
 #endif
@@ -2065,7 +2081,7 @@ rb_gc_call_finalizer_at_exit()
 	    p = deferred_final_list;
 	    deferred_final_list = 0;
 	    finalize_list(p);
-	    mark_tbl(finalizer_table, 0);
+	    mark_tbl(finalizer_table);
 	    st_foreach(finalizer_table, chain_finalized_object,
 		       (st_data_t)&deferred_final_list);
 	} while (deferred_final_list);
@@ -2228,6 +2244,7 @@ Init_GC()
     rb_define_singleton_method(rb_mGC, "limit", gc_getlimit, 0);
     rb_define_singleton_method(rb_mGC, "limit=", gc_setlimit, 1);
     rb_define_singleton_method(rb_mGC, "growth", gc_growth, 0);
+    rb_define_singleton_method(rb_mGC, "exorcise", gc_exorcise, 0);
 #endif
     rb_define_singleton_method(rb_mGC, "stress", gc_stress_get, 0);
     rb_define_singleton_method(rb_mGC, "stress=", gc_stress_set, 1);
