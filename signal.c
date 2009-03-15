@@ -629,8 +629,7 @@ sigsegv(sig)
     }
 #endif
 
-    extern int ruby_gc_stress;
-    ruby_gc_stress = 0;
+    rb_gc_unstress();
     rb_bug("Segmentation fault");
 }
 #endif
