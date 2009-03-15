@@ -213,6 +213,7 @@ ruby_xmalloc(size)
 
     if ((malloc_increase+=size) > malloc_limit) {
 	garbage_collect();
+        malloc_increase = size;
     }
     RUBY_CRITICAL(mem = malloc(size));
     if (!mem) {
@@ -222,8 +223,6 @@ ruby_xmalloc(size)
 	    rb_memerror();
 	}
     }
-    malloc_increase += size;
-
     return mem;
 }
 
@@ -253,6 +252,7 @@ ruby_xrealloc(ptr, size)
     if (size == 0) size = 1;
     if ((malloc_increase+=size) > malloc_limit) {
 	garbage_collect();
+        malloc_increase = size;
     }
     RUBY_CRITICAL(mem = realloc(ptr, size));
     if (!mem) {
@@ -262,8 +262,6 @@ ruby_xrealloc(ptr, size)
 	    rb_memerror();
         }
     }
-    malloc_increase += size;
-
     return mem;
 }
 
