@@ -1201,13 +1201,12 @@ gc_sweep()
     RVALUE *p, *pend, *final_list;
     int freed = 0;
     int i;
-    unsigned long live = 0;
-    unsigned long free_min = 0;
+    long free_min = 0;
 
     for (i = 0; i < heaps_used; i++) {
         free_min += heaps[i].limit;
     }
-    free_min = free_min * 0.2;
+    free_min /= 5;
     if (free_min < FREE_MIN)
         free_min = FREE_MIN;
 
@@ -1263,7 +1262,6 @@ gc_sweep()
 	    }
 	    else {
 		RBASIC(p)->flags &= ~FL_MARK;
-		live++;
 	    }
 	    p++;
 	}
@@ -1279,10 +1277,6 @@ gc_sweep()
 	else {
 	    freed += n;
 	}
-    }
-    if (malloc_increase > malloc_limit) {
-	malloc_limit += (malloc_increase - malloc_limit) * (double)live / (live + freed);
-	if (malloc_limit < GC_MALLOC_LIMIT) malloc_limit = GC_MALLOC_LIMIT;
     }
     malloc_increase = 0;
     if (freed < free_min) {
