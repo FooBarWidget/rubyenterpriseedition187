@@ -10526,7 +10526,7 @@ static inline void
 stack_free(th)
     rb_thread_t th;
 {
-    if (th->stk_ptr) free(th->stk_ptr);
+    if (th->stk_ptr) free(th->stk_ptr - (th->stk_len/sizeof(VALUE *)));
     th->stk_ptr = 0;
 #ifdef __ia64
     if (th->bstr_ptr) free(th->bstr_ptr);
@@ -10586,6 +10586,7 @@ rb_thread_save_context(th)
     size_t len;
     static VALUE tval;
 
+    /*
     len = ruby_stack_length(&pos);
     th->stk_len = 0;
     th->stk_pos = pos;
@@ -10598,6 +10599,7 @@ rb_thread_save_context(th)
     th->stk_len = len;
     FLUSH_REGISTER_WINDOWS;
     MEMCPY(th->stk_ptr, th->stk_pos, VALUE, th->stk_len);
+
 #ifdef __ia64
     th->bstr_pos = rb_gc_register_stack_start;
     len = (VALUE*)rb_ia64_bsp() - th->bstr_pos;
@@ -10615,7 +10617,9 @@ rb_thread_save_context(th)
 #ifdef SAVE_WIN32_EXCEPTION_LIST
     th->win32_exception_list = win32_get_exception_list();
 #endif
+	*/
 
+    /** XXX do something when you go over stack limit **/
     th->frame = ruby_frame;
     th->scope = ruby_scope;
     ruby_scope->flags |= SCOPE_DONT_RECYCLE;
@@ -10725,11 +10729,13 @@ rb_thread_restore_context_0(rb_thread_t th, int exit)
 #endif
     tmp = th;
     ex = exit;
+/*
     FLUSH_REGISTER_WINDOWS;
     MEMCPY(tmp->stk_pos, tmp->stk_ptr, VALUE, tmp->stk_len);
 #ifdef __ia64
     MEMCPY(tmp->bstr_pos, tmp->bstr_ptr, VALUE, tmp->bstr_len);
 #endif
+    */
 
     tval = rb_lastline_get();
     rb_lastline_set(tmp->last_line);
@@ -10821,7 +10827,8 @@ rb_thread_restore_context(th, exit)
     int exit;
 {
     if (!th->stk_ptr) rb_bug("unsaved context");
-    stack_extend(th, exit);
+ //   stack_extend(th, exit);
+	     rb_thread_restore_context_0(th, exit);
 }
 
 static void
@@ -10840,7 +10847,7 @@ rb_thread_die(th)
 {
     th->thgroup = 0;
     th->status = THREAD_KILLED;
-    stack_free(th);
+    //stack_free(th);
 }
 
 static void
@@ -12202,6 +12209,18 @@ rb_thread_alloc(klass)
     THREAD_ALLOC(th);
     th->thread = Data_Wrap_Struct(klass, thread_mark, thread_free, th);
 
+    /* if main_thread != NULL, then this is NOT the main thread, so
+     * we create a heap-stack
+     */
+    if (main_thread) {
+      th->stk_ptr = th->stk_pos = malloc(1024*1024);
+      th->stk_ptr += ((1024 * 1024)/sizeof(VALUE *));
+      th->stk_len = 1024*1024;
+			printf("yo: %p\n", th->stk_ptr);
+    } else {
+			th->stk_ptr = th->stk_pos = 1;
+		}
+
     for (vars = th->dyna_vars; vars; vars = vars->next) {
 	if (FL_TEST(vars, DVAR_DONT_RECYCLE)) break;
 	FL_SET(vars, DVAR_DONT_RECYCLE);
@@ -12306,16 +12325,15 @@ int rb_thread_tick = THREAD_TICK;
 #endif
 
 static VALUE
+rb_thread_start_2(VALUE (*fn)(), void *arg, rb_thread_t th);
+
+static VALUE
 rb_thread_start_0(fn, arg, th)
     VALUE (*fn)();
     void *arg;
     rb_thread_t th;
 {
-    volatile rb_thread_t th_save = th;
     volatile VALUE thread = th->thread;
-    struct BLOCK *volatile saved_block = 0;
-    enum rb_thread_status status;
-    int state;
 
     if (OBJ_FROZEN(curr_thread->thgroup)) {
 	rb_raise(rb_eThreadError,
@@ -12343,7 +12361,24 @@ rb_thread_start_0(fn, arg, th)
 	return thread;
     }
 
-    if (ruby_block) {		/* should nail down higher blocks */
+    /** set new stack pointer **/
+   __asm__ __volatile__ ("movl %0, %%esp\n" : : "r" (th->stk_ptr));
+   return rb_thread_start_2(fn, arg, th);
+}
+
+static VALUE
+rb_thread_start_2(fn, arg, th)
+	VALUE (*fn)();
+	void *arg;
+	rb_thread_t th;
+{
+   volatile rb_thread_t th_save = th;
+   volatile VALUE thread = th->thread;
+   struct BLOCK *volatile saved_block = 0;
+   enum rb_thread_status status;
+   int state;
+
+  if (ruby_block) {		/* should nail down higher blocks */
 	struct BLOCK dummy;
 
 	dummy.prev = ruby_block;
