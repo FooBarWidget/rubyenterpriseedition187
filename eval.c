@@ -12228,11 +12228,10 @@ rb_thread_alloc(klass)
      * we create a heap-stack 
      */
     if (main_thread) {
-#define __JOE_STK_LEN (1024*1024*10)
+#define __JOE_STK_LEN (1024*512)
       th->stk_ptr = th->stk_pos = malloc(__JOE_STK_LEN);
       th->stk_base = th->stk_pos + ((__JOE_STK_LEN)/sizeof(VALUE *));
       th->stk_len = __JOE_STK_LEN;
-			printf("yo: %p\n", th->stk_ptr);
     } else {
 			th->stk_ptr = th->stk_pos = 1;
 		}
