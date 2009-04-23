@@ -10432,10 +10432,15 @@ thread_mark(th)
     rb_gc_mark_maybe(th->sandbox);
 
     /* mark data in copied stack */
-    if (th == curr_thread) return;
+    if (th == main_thread) return;
     if (th->status == THREAD_KILLED) return;
     if (th->stk_len == 0) return;  /* stack not active, no need to mark. */
     if (th->stk_ptr) {
+        /**
+	 *  XXX
+	 * should check from %esp on thread stack UP to len instead of the 
+	 * entire thing
+	 */
 	rb_gc_mark_locations(th->stk_ptr, th->stk_ptr+th->stk_len);
 #if defined(THINK_C) || defined(__human68k__)
 	rb_gc_mark_locations(th->stk_ptr+2, th->stk_ptr+th->stk_len+2);
@@ -10448,13 +10453,20 @@ thread_mark(th)
     }
     frame = th->frame;
     while (frame && frame != top_frame) {
-	frame = ADJ(frame);
+	/*printf("before frame adjust: %p\n", frame);
+        frame = ADJ(frame);
+	printf("after adj frame is: %p\n", frame);
+	*/
+
 	rb_gc_mark_frame(frame);
 	if (frame->tmp) {
 	    struct FRAME *tmp = frame->tmp;
 
 	    while (tmp && tmp != top_frame) {
-		tmp = ADJ(tmp);
+	/*	printf("before ADJ, tmp: %p\n", tmp);
+	        tmp = ADJ(tmp);
+		printf("after ADJ, tmp: %p\n", tmp);
+		*/
 		rb_gc_mark_frame(tmp);
 		tmp = tmp->prev;
 	    }
@@ -10463,7 +10475,10 @@ thread_mark(th)
     }
     block = th->block;
     while (block) {
+/*        printf("before ADJ, block: %p\n", block);
 	block = ADJ(block);
+	printf("after ADJ, block: %p\n", block);
+	*/
 	rb_gc_mark_frame(&block->frame);
 	block = block->prev;
     }
@@ -10526,7 +10541,7 @@ static inline void
 stack_free(th)
     rb_thread_t th;
 {
-    if (th->stk_ptr) free(th->stk_ptr - (th->stk_len/sizeof(VALUE *)));
+    if (th->stk_ptr) free(th->stk_ptr);
     th->stk_ptr = 0;
 #ifdef __ia64
     if (th->bstr_ptr) free(th->bstr_ptr);
@@ -10586,10 +10601,10 @@ rb_thread_save_context(th)
     size_t len;
     static VALUE tval;
 
-    /*
     len = ruby_stack_length(&pos);
-    th->stk_len = 0;
+    th->stk_len = len;
     th->stk_pos = pos;
+    /*
     if (len > th->stk_max) {
 	VALUE *ptr = realloc(th->stk_ptr, sizeof(VALUE) * len);
 	if (!ptr) rb_memerror();
@@ -10599,7 +10614,7 @@ rb_thread_save_context(th)
     th->stk_len = len;
     FLUSH_REGISTER_WINDOWS;
     MEMCPY(th->stk_ptr, th->stk_pos, VALUE, th->stk_len);
-
+    
 #ifdef __ia64
     th->bstr_pos = rb_gc_register_stack_start;
     len = (VALUE*)rb_ia64_bsp() - th->bstr_pos;
@@ -10828,7 +10843,7 @@ rb_thread_restore_context(th, exit)
 {
     if (!th->stk_ptr) rb_bug("unsaved context");
  //   stack_extend(th, exit);
-	     rb_thread_restore_context_0(th, exit);
+ 		rb_thread_restore_context_0(th, exit);
 }
 
 static void
@@ -12209,13 +12224,14 @@ rb_thread_alloc(klass)
     THREAD_ALLOC(th);
     th->thread = Data_Wrap_Struct(klass, thread_mark, thread_free, th);
 
-    /* if main_thread != NULL, then this is NOT the main thread, so
-     * we create a heap-stack
+    /* if main_thread != NULL, then this is NOT the main thread, so 
+     * we create a heap-stack 
      */
     if (main_thread) {
-      th->stk_ptr = th->stk_pos = malloc(1024*1024);
-      th->stk_ptr += ((1024 * 1024)/sizeof(VALUE *));
-      th->stk_len = 1024*1024;
+#define __JOE_STK_LEN (1024*1024*10)
+      th->stk_ptr = th->stk_pos = malloc(__JOE_STK_LEN);
+      th->stk_base = th->stk_pos + ((__JOE_STK_LEN)/sizeof(VALUE *));
+      th->stk_len = __JOE_STK_LEN;
 			printf("yo: %p\n", th->stk_ptr);
     } else {
 			th->stk_ptr = th->stk_pos = 1;
@@ -12362,13 +12378,13 @@ rb_thread_start_0(fn, arg, th)
     }
 
     /** set new stack pointer **/
-   __asm__ __volatile__ ("movl %0, %%esp\n" : : "r" (th->stk_ptr));
+   __asm__ __volatile__ ("movl %0, %%esp\n" : : "r" (th->stk_base));
    return rb_thread_start_2(fn, arg, th);
 }
 
 static VALUE
 rb_thread_start_2(fn, arg, th)
-	VALUE (*fn)();
+  	VALUE (*fn)();
 	void *arg;
 	rb_thread_t th;
 {
