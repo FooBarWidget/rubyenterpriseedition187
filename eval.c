@@ -12343,6 +12343,9 @@ static VALUE
 rb_thread_start_2(VALUE (*fn)(), void *arg, rb_thread_t th);
 
 static VALUE
+rb_thread_start_1(VALUE (*fn)(), void *arg, rb_thread_t th);
+
+static VALUE
 rb_thread_start_0(fn, arg, th)
     VALUE (*fn)();
     void *arg;
@@ -12376,12 +12379,28 @@ rb_thread_start_0(fn, arg, th)
 	return thread;
     }
 
-    /** set new stack pointer (32-bit x86 only) **/
-   __asm__ __volatile__ ("movl %0, %%esp\n\t"
-			 "subl $12, %%esp\n\t" /* make space for the arguments */
-			 "andl 0xFFFFFFF0, %%esp" : : "r" (th->stk_base)); /* OSX requires 16byte aligned addresses */
-   /* TODO: call this function using __asm__ */
-   return rb_thread_start_2(fn, arg, th);
+    return rb_thread_start_1(fn, arg, th);
+}
+
+static VALUE
+rb_thread_start_1(fn, arg, th)
+     VALUE (*fn)();
+     void *arg;
+rb_thread_t th;
+{
+  /** set new stack pointer (32-bit x86 only) **/
+  __asm__ __volatile__("movl %0, %%esp\n\t"
+		       "andl $0xFFFFFFF0, %%esp\n\t"/* OSX requires 16byte
+						       aligned addresses */
+		       "pushl %1\n\t"
+		       "pushl %2\n\t"
+		       "pushl %3\n\t"
+		       "call *%4\n"
+		       : : "r" (th->stk_base),
+		       "r" (th),
+		       "r" (arg),
+                       "r" (fn),
+		       "r" (rb_thread_start_2));
 }
 
 static VALUE
