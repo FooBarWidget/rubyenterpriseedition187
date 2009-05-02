@@ -12390,8 +12390,10 @@ rb_thread_t th;
 {
   /** set new stack pointer (32-bit x86 only) **/
   __asm__ __volatile__("movl %0, %%esp\n\t"
+                       "subl $12, %%esp\n\t"
 		       "andl $0xFFFFFFF0, %%esp\n\t"/* OSX requires 16byte
 						       aligned addresses */
+                       "addl $12, %%esp\n\t"
 		       "pushl %1\n\t"
 		       "pushl %2\n\t"
 		       "pushl %3\n\t"
