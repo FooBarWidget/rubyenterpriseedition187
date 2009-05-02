@@ -1439,6 +1439,8 @@ garbage_collect()
 	rb_bug("cross-thread violation on rb_gc()");
     }
 #endif
+    // XXX: Use to restrict GC to main thread only
+    // if (rb_curr_thread!=rb_main_thread || dont_gc || during_gc) {
     if (dont_gc || during_gc) {
 	if (!freelist) {
 	    add_heap();

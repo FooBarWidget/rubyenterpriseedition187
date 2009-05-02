@@ -12376,9 +12376,11 @@ rb_thread_start_0(fn, arg, th)
 	return thread;
     }
 
-    /** set new stack pointer **/
+    /** set new stack pointer (32-bit x86 only) **/
    __asm__ __volatile__ ("movl %0, %%esp\n\t"
-			 "subl $12, %%esp\n" : : "r" (th->stk_base));
+			 "subl $12, %%esp\n\t" /* make space for the arguments */
+			 "andl 0xFFFFFFF0, %%esp" : : "r" (th->stk_base)); /* OSX requires 16byte aligned addresses */
+   /* TODO: call this function using __asm__ */
    return rb_thread_start_2(fn, arg, th);
 }
 
@@ -12408,6 +12410,10 @@ rb_thread_start_2(fn, arg, th)
     frame_dup(&dummy_frame);
     ruby_frame = dummy_frame.prev;
 
+    // XXX: mbari does it, but we'd need to free the frames dup'd above first
+    // ruby_frame->prev = top_frame;
+    // ruby_frame->tmp = 0;
+
     if (!th->next) {
 	/* merge in thread list */
 	th->prev = curr_thread;
@@ -12418,10 +12424,10 @@ rb_thread_start_2(fn, arg, th)
 	th->thgroup = curr_thread->thgroup;
     }
 
+    curr_thread = th;
     PUSH_TAG(PROT_THREAD);
     if ((state = EXEC_TAG()) == 0) {
 	if (THREAD_SAVE_CONTEXT(th) == 0) {
-	    curr_thread = th;
 	    th->result = (*fn)(arg, th);
 	}
 	th = th_save;
