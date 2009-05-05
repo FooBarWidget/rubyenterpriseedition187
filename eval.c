@@ -10417,12 +10417,28 @@ thread_mark(th)
     rb_gc_mark(th->thread);
     if (th->join) rb_gc_mark(th->join->thread);
 
-    rb_gc_mark(th->klass);
-    rb_gc_mark(th->wrapper);
-    rb_gc_mark((VALUE)th->cref);
+    if (curr_thread == th)
+      rb_gc_mark(ruby_class);
+    else
+      rb_gc_mark(th->klass);
+    if (curr_thread == th)
+      rb_gc_mark(ruby_wrapper);
+    else
+      rb_gc_mark(th->wrapper);
+    if (curr_thread == th)
+      rb_gc_mark((VALUE)ruby_cref);
+    else
+      rb_gc_mark((VALUE)th->cref);
 
-    rb_gc_mark((VALUE)th->scope);
-    rb_gc_mark((VALUE)th->dyna_vars);
+    if (curr_thread == th)
+      rb_gc_mark((VALUE)ruby_scope);
+    else
+      rb_gc_mark((VALUE)th->scope);
+    if (curr_thread == th)
+      rb_gc_mark((VALUE)ruby_dyna_vars);
+    else
+      rb_gc_mark((VALUE)th->dyna_vars);
+
     rb_gc_mark(th->errinfo);
     rb_gc_mark(th->last_status);
     rb_gc_mark(th->last_line);
@@ -10435,13 +10451,16 @@ thread_mark(th)
     if (th == main_thread) return;
     if (th->status == THREAD_KILLED) return;
     if (th->stk_len == 0) return;  /* stack not active, no need to mark. */
-    if (th->stk_ptr) {
+    if (th->stk_ptr && th != curr_thread) {
         /**
 	 *  XXX
 	 * should check from %esp on thread stack UP to len instead of the 
 	 * entire thing
 	 */
-	rb_gc_mark_locations(th->stk_ptr, th->stk_ptr+th->stk_len);
+         // printf("thread(%p): ptr(%x), base(%x), len(%x), pos(%x), pos+len(%x)\n", th, th->stk_ptr, th->stk_base, th->stk_len, th->stk_pos, th->stk_pos + th->stk_len);
+         rb_gc_mark_locations(th->stk_pos, th->stk_base);
+         // rb_gc_mark_locations(th->stk_pos, th->stk_pos+th->stk_len);
+        // rb_gc_mark_locations(th->stk_ptr, th->stk_ptr+th->stk_len);
 #if defined(THINK_C) || defined(__human68k__)
 	rb_gc_mark_locations(th->stk_ptr+2, th->stk_ptr+th->stk_len+2);
 #endif
@@ -10452,6 +10471,7 @@ thread_mark(th)
 #endif
     }
     frame = th->frame;
+    if (curr_thread == th) frame = ruby_frame;
     while (frame && frame != top_frame) {
 	/*printf("before frame adjust: %p\n", frame);
         frame = ADJ(frame);
@@ -10474,6 +10494,7 @@ thread_mark(th)
 	frame = frame->prev;
     }
     block = th->block;
+    if (curr_thread == th) block = ruby_block;
     while (block) {
 /*        printf("before ADJ, block: %p\n", block);
 	block = ADJ(block);
@@ -10862,7 +10883,7 @@ rb_thread_die(th)
 {
     th->thgroup = 0;
     th->status = THREAD_KILLED;
-    //stack_free(th);
+    // stack_free(th);
 }
 
 static void
@@ -12416,24 +12437,31 @@ rb_thread_start_2(fn, arg, th)
    struct BLOCK *volatile saved_block = 0;
    enum rb_thread_status status;
    int state;
-   struct FRAME dummy_frame;
+   struct tag *tag;
+   struct RVarmap *vars;
 
-  if (ruby_block) {		/* should nail down higher blocks */
+   struct FRAME dummy_frame;
+   dummy_frame = *ruby_frame;
+   dummy_frame.prev = top_frame;
+   ruby_frame = &dummy_frame;
+
+   if (ruby_block) {		/* should nail down higher blocks */
 	struct BLOCK dummy;
 
 	dummy.prev = ruby_block;
 	blk_copy_prev(&dummy);
 	saved_block = ruby_block = dummy.prev;
     }
+
     scope_dup(ruby_scope);
 
-    dummy_frame.prev = ruby_frame;
-    frame_dup(&dummy_frame);
-    ruby_frame = dummy_frame.prev;
-
-    // XXX: mbari does it, but we'd need to free the frames dup'd above first
-    // ruby_frame->prev = top_frame;
-    // ruby_frame->tmp = 0;
+    for (tag=prot_tag; tag; tag=tag->prev) {
+        if (tag->scope)
+          scope_dup(tag->scope);
+    }
+    for (vars = ruby_dyna_vars; vars; vars = vars->next) {
+	FL_SET(vars, DVAR_DONT_RECYCLE);
+    }
 
     if (!th->next) {
 	/* merge in thread list */

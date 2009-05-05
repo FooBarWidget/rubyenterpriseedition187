@@ -1452,10 +1452,18 @@ garbage_collect()
 
     init_mark_stack();
 
-    gc_mark((VALUE)ruby_current_node, 0);
+    if (rb_curr_thread == rb_main_thread)
+      gc_mark((VALUE)ruby_current_node, 0);
+    else
+      gc_mark((VALUE)rb_main_thread->node, 0);
 
     /* mark frame stack */
-    for (frame = ruby_frame; frame; frame = frame->prev) {
+    if (rb_curr_thread == rb_main_thread)
+      frame = ruby_frame;
+    else
+      frame = rb_main_thread->frame;
+
+    for (; frame; frame = frame->prev) {
 	rb_gc_mark_frame(frame);
 	if (frame->tmp) {
 	    struct FRAME *tmp = frame->tmp;
@@ -1465,11 +1473,20 @@ garbage_collect()
 	    }
 	}
     }
-    gc_mark((VALUE)ruby_scope, 0);
-    gc_mark((VALUE)ruby_dyna_vars, 0);
+    if (rb_curr_thread == rb_main_thread)
+      gc_mark((VALUE)ruby_scope, 0);
+    else
+      gc_mark((VALUE)rb_main_thread->scope, 0);
+    if (rb_curr_thread == rb_main_thread)
+      gc_mark((VALUE)ruby_dyna_vars, 0);
+    else
+      gc_mark((VALUE)rb_main_thread->dyna_vars, 0);
     if (finalizer_table) {
 	mark_tbl(finalizer_table, 0);
     }
+
+    if (rb_curr_thread != rb_main_thread)
+        rb_gc_mark_locations((VALUE*)STACK_END, rb_curr_thread->stk_base);
 
     FLUSH_REGISTER_WINDOWS;
     /* This assumes that all registers are saved into the jmp_buf (and stack) */
