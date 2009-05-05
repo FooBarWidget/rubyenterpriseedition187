@@ -12439,8 +12439,19 @@ rb_thread_start_2(fn, arg, th)
    int state;
    struct tag *tag;
    struct RVarmap *vars;
-
    struct FRAME dummy_frame;
+
+   if (!th->next) {
+	/* merge in thread list */
+	th->prev = curr_thread;
+	curr_thread->next->prev = th;
+	th->next = curr_thread->next;
+	curr_thread->next = th;
+	th->priority = curr_thread->priority;
+	th->thgroup = curr_thread->thgroup;
+   }
+   curr_thread = th;
+
    dummy_frame = *ruby_frame;
    dummy_frame.prev = top_frame;
    ruby_frame = &dummy_frame;
@@ -12463,17 +12474,6 @@ rb_thread_start_2(fn, arg, th)
 	FL_SET(vars, DVAR_DONT_RECYCLE);
     }
 
-    if (!th->next) {
-	/* merge in thread list */
-	th->prev = curr_thread;
-	curr_thread->next->prev = th;
-	th->next = curr_thread->next;
-	curr_thread->next = th;
-	th->priority = curr_thread->priority;
-	th->thgroup = curr_thread->thgroup;
-    }
-
-    curr_thread = th;
     PUSH_TAG(PROT_THREAD);
     if ((state = EXEC_TAG()) == 0) {
 	if (THREAD_SAVE_CONTEXT(th) == 0) {
