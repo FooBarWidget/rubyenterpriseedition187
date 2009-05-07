@@ -12466,14 +12466,6 @@ rb_thread_start_2(fn, arg, th)
 
     scope_dup(ruby_scope);
 
-    for (tag=prot_tag; tag; tag=tag->prev) {
-        if (tag->scope)
-          scope_dup(tag->scope);
-    }
-    for (vars = ruby_dyna_vars; vars; vars = vars->next) {
-	FL_SET(vars, DVAR_DONT_RECYCLE);
-    }
-
     PUSH_TAG(PROT_THREAD);
     if ((state = EXEC_TAG()) == 0) {
 	if (THREAD_SAVE_CONTEXT(th) == 0) {
