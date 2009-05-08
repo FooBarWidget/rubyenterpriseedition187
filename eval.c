@@ -12235,6 +12235,11 @@ rb_thread_group(thread)
     }\
 } while (0)
 
+/**
+ * XXX: Start with 512k thread stacks until we figure out how to grow them
+ */
+#define __THREAD_STACK_SIZE (1024 * 512)
+
 static rb_thread_t
 rb_thread_alloc(klass)
     VALUE klass;
@@ -12249,13 +12254,24 @@ rb_thread_alloc(klass)
      * we create a heap-stack 
      */
     if (main_thread) {
-#define __JOE_STK_LEN (1024*512)
-      th->stk_ptr = th->stk_pos = malloc(__JOE_STK_LEN);
-      th->stk_base = th->stk_pos + ((__JOE_STK_LEN)/sizeof(VALUE *));
-      th->stk_len = __JOE_STK_LEN;
+      /* Allocate stack, don't forget to add 1 extra word because of the MATH below*/
+      th->stk_ptr = th->stk_pos = malloc(__THREAD_STACK_SIZE + sizeof(int));
+
+      /* point stk_base at the top of the stack */
+      /* ASSUMPTIONS:
+       * 1.) The address returned by malloc is "suitably aligned" for anything on this system
+       * 2.) Adding a value that is "aligned" for this platform should not unalign the address
+       *     returned from malloc.
+       * 3.) Don't push anything on to the stack, otherwise it'll get unaligned.
+       * 4.) x86_64 ABI says aligned AFTER arguments have been pushed. You *must* then do a call[lq]
+       *     or push[lq] something else on to the stack if you inted to do a ret.
+       */
+      th->stk_base = th->stk_ptr + ((__THREAD_STACK_SIZE)/sizeof(VALUE *));
+
+      th->stk_len = __THREAD_STACK_SIZE;
     } else {
-			th->stk_ptr = th->stk_pos = 1;
-		}
+      th->stk_ptr = th->stk_pos = 1;
+    }
 
     for (vars = th->dyna_vars; vars; vars = vars->next) {
 	if (FL_TEST(vars, DVAR_DONT_RECYCLE)) break;
@@ -12360,11 +12376,14 @@ rb_thread_stop_timer()
 int rb_thread_tick = THREAD_TICK;
 #endif
 
-static VALUE
-rb_thread_start_2(VALUE (*fn)(), void *arg, rb_thread_t th);
+struct thread_start_args {
+  VALUE (*fn)();
+  void *arg;
+  rb_thread_t th;
+} new_th;
 
 static VALUE
-rb_thread_start_1(VALUE (*fn)(), void *arg, rb_thread_t th);
+rb_thread_start_2();
 
 static VALUE
 rb_thread_start_0(fn, arg, th)
@@ -12400,38 +12419,30 @@ rb_thread_start_0(fn, arg, th)
 	return thread;
     }
 
-    return rb_thread_start_1(fn, arg, th);
+    new_th.fn = fn;
+    new_th.arg = arg;
+    new_th.th = th;
+
+#if defined(__i386__)
+    __asm__ __volatile__ ("movl %0, %%esp\n\t"
+                          "calll *%1\n"
+                          :: "r" (th->stk_base),
+                             "r" (rb_thread_start_2));
+#else /* !defined(__i386__) */
+    __asm__ __volatile__ ("movq %0, %%rsp\n\t"
+                          "callq *%1\n"
+                          :: "r" (th->stk_base),
+                             "r" (rb_thread_start_2));
+#endif /* defined(__i386__) */
+
+    /* NOTREACHED */
+    return 0;
 }
 
 static VALUE
-rb_thread_start_1(fn, arg, th)
-     VALUE (*fn)();
-     void *arg;
-rb_thread_t th;
+rb_thread_start_2()
 {
-  /** set new stack pointer (32-bit x86 only) **/
-  __asm__ __volatile__("movl %0, %%esp\n\t"
-                       "subl $12, %%esp\n\t"
-		       "andl $0xFFFFFFF0, %%esp\n\t"/* OSX requires 16byte
-						       aligned addresses */
-                       "addl $12, %%esp\n\t"
-		       "pushl %1\n\t"
-		       "pushl %2\n\t"
-		       "pushl %3\n\t"
-		       "call *%4\n"
-		       : : "r" (th->stk_base),
-		       "r" (th),
-		       "r" (arg),
-                       "r" (fn),
-		       "r" (rb_thread_start_2));
-}
-
-static VALUE
-rb_thread_start_2(fn, arg, th)
-  	VALUE (*fn)();
-	void *arg;
-	rb_thread_t th;
-{
+   volatile rb_thread_t th = new_th.th;
    volatile rb_thread_t th_save = th;
    volatile VALUE thread = th->thread;
    struct BLOCK *volatile saved_block = 0;
@@ -12469,7 +12480,7 @@ rb_thread_start_2(fn, arg, th)
     PUSH_TAG(PROT_THREAD);
     if ((state = EXEC_TAG()) == 0) {
 	if (THREAD_SAVE_CONTEXT(th) == 0) {
-	    th->result = (*fn)(arg, th);
+	    th->result = (*new_th.fn)(new_th.arg, th);
 	}
 	th = th_save;
     }
