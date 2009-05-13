@@ -73,6 +73,7 @@ char *strrchr _((const char*,const char));
 #endif
 
 #include <time.h>
+#include <sys/mman.h>
 
 #if defined(HAVE_FCNTL_H) || defined(_WIN32)
 #include <fcntl.h>
@@ -12236,9 +12237,9 @@ rb_thread_group(thread)
 } while (0)
 
 /**
- * XXX: Start with 512k thread stacks until we figure out how to grow them
+ * Start with 16k thread stacks and a 1 page guard region.
  */
-#define __THREAD_STACK_SIZE (1024 * 512)
+#define __THREAD_STACK_SIZE (1024 * 16)
 
 static rb_thread_t
 rb_thread_alloc(klass)
@@ -12255,7 +12256,26 @@ rb_thread_alloc(klass)
      */
     if (main_thread) {
       /* Allocate stack, don't forget to add 1 extra word because of the MATH below*/
-      th->stk_ptr = th->stk_pos = malloc(__THREAD_STACK_SIZE + sizeof(int));
+      unsigned int pagesize = getpagesize();
+      unsigned int total_size = __THREAD_STACK_SIZE + pagesize + sizeof(int);
+      void *stack_area = NULL;
+
+      stack_area = mmap(NULL, total_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+			MAP_PRIVATE | MAP_ANON, -1, 0);
+
+      if (stack_area == MAP_FAILED) {
+	fprintf(stderr, "Thread stack allocation failed!\n");
+	rb_memerror();
+      }
+
+      th->stk_ptr = th->stk_pos = stack_area;
+
+      if (mprotect(th->stk_ptr, pagesize, PROT_NONE) == -1) {
+	fprintf(stderr, "Failed to create thread guard region: %s\n", strerror(errno));
+	rb_memerror();
+      }
+
+      th->guard = th->stk_ptr;
 
       /* point stk_base at the top of the stack */
       /* ASSUMPTIONS:
@@ -12266,8 +12286,7 @@ rb_thread_alloc(klass)
        * 4.) x86_64 ABI says aligned AFTER arguments have been pushed. You *must* then do a call[lq]
        *     or push[lq] something else on to the stack if you inted to do a ret.
        */
-      th->stk_base = th->stk_ptr + ((__THREAD_STACK_SIZE)/sizeof(VALUE *));
-
+      th->stk_base = th->stk_ptr + ((total_size - sizeof(int))/sizeof(VALUE *));
       th->stk_len = __THREAD_STACK_SIZE;
     } else {
       th->stk_ptr = th->stk_pos = 1;
