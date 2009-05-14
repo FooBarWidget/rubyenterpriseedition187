@@ -435,7 +435,7 @@ ruby_signal(signum, handler)
 
     rb_trap_accept_nativethreads[signum] = 0;
 
-    if (signum == SIGSEGV) {
+    if (signum == SIGSEGV || signum == SIGBUS) {
       sigact.sa_sigaction = handler;
       sigact.sa_flags = (SA_ONSTACK | SA_RESETHAND | SA_SIGINFO);
     } else {
