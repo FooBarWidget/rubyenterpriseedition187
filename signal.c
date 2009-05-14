@@ -429,7 +429,7 @@ typedef RETSIGTYPE (*sighandler_t)_((int));
 static sighandler_t
 ruby_signal(signum, handler)
     int signum;
-    void * handler;
+    void *handler;
 {
     struct sigaction sigact, old;
 

@@ -1514,7 +1514,7 @@ garbage_collect()
     rb_gc_mark_locations((VALUE*)((char*)STACK_END + 2),
 			 (VALUE*)((char*)rb_gc_stack_start + 2));
 #endif
-    
+
     rb_gc_mark_threads();
 
     /* mark protected global variables */

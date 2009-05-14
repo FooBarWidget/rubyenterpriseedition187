@@ -1032,7 +1032,7 @@ static struct tag *prot_tag;
     _tag.blkid = 0;			\
     prot_tag = &_tag
 
-#define PROT_EMPTY   Qfalse	/* 0 */
+#define PROT_EMPTY  Qfalse	/* 0 */
 #define PROT_THREAD Qtrue	/* 2 */
 #define PROT_FUNC   INT2FIX(0)	/* 1 */
 #define PROT_LOOP   INT2FIX(1)	/* 3 */
