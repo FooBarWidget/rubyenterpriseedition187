@@ -543,27 +543,27 @@ size_t
 ruby_stack_length(p)
     VALUE **p;
 {
-    SET_STACK_END;
-		VALUE *start;
-		if (rb_curr_thread == rb_main_thread) {
-			start = rb_gc_stack_start;
-		} else {
-			start = rb_curr_thread->stk_base;
-		}
-    if (p) *p = STACK_UPPER(STACK_END, start, STACK_END);
-    return STACK_LENGTH(start);
+  SET_STACK_END;
+  VALUE *start;
+  if (rb_curr_thread == rb_main_thread) {
+    start = rb_gc_stack_start;
+  } else {
+    start = rb_curr_thread->stk_base;
+  }
+  if (p) *p = STACK_UPPER(STACK_END, start, STACK_END);
+  return STACK_LENGTH(start);
 }
 
 int
 ruby_stack_check()
 {
-    int ret;
-	  if (rb_curr_thread == rb_main_thread) {
-			CHECK_STACK(ret, rb_gc_stack_start);
-		} else {
-    	CHECK_STACK(ret, rb_curr_thread->stk_base);
-		}
-    return ret;
+  int ret;
+  if (rb_curr_thread == rb_main_thread) {
+    CHECK_STACK(ret, rb_gc_stack_start);
+  } else {
+    CHECK_STACK(ret, rb_curr_thread->stk_base);
+  }
+  return ret;
 }
 
 #define MARK_STACK_MAX 1024

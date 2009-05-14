@@ -639,13 +639,24 @@ static void
 dump_machine_state(uc)
      ucontext_t *uc;
 {
+  const char *dump64 =
+    " ----------------- Register state dump ----------------------\n"
+    "rax = 0x%.16x  rbx    = 0x%.16x  rcx = 0x%.16x  rdx = 0x%.16x\n"
+    "rdi = 0x%.16x  rsi    = 0x%.16x  rbp = 0x%.16x  rsp = 0x%.16x\n"
+    "r8  = 0x%.16x  r9     = 0x%.16x  r10 = 0x%.16x  r11 = 0x%.16x\n"
+    "r12 = 0x%.16x  r13    = 0x%.16x  r14 = 0x%.16x  r15 = 0x%.16x\n"
+    "rip = 0x%.16x  rflags = 0x%.16x  cs  = 0x%.16x  fs  = 0x%.16x\n"
+    "gs  = 0x%.16x";
+
+  const char *dump32 =
+    " ----------------- Register state dump -------------------\n"
+    "eax = 0x%.8x  ebx    = 0x%.8x  ecx = 0x%.8x  edx = 0x%.8x\n"
+    "edi = 0x%.8x  esi    = 0x%.8x  ebp = 0x%.8x  esp = 0x%.8x\n"
+    "ss  = 0x%.8x  eflags = 0x%.8x  eip = 0x%.8x  cs  = 0x%.8x\n"
+    "ds  = 0x%.8x  es     = 0x%.8x  fs  = 0x%.8x  gs  = 0x%.8x\n";
+
 #if defined(__LP64__) && defined(__APPLE__)
-  sig_printf("rax = 0x%.16x rbx = 0x%.16x rcx = 0x%.16x rdx = 0x%.16x\n"
-	     "rdi = 0x%.16x rsi = 0x%.16x rbp = 0x%.16x rsp = 0x%.16x\n"
-	     "r8 = 0x%.16x r9 = 0x%.16x  r10 = 0x%.16x r11 = 0x%.16x\n"
-	     "r12 = 0x%.16x r13 = 0x%.16x r14 = 0x%.16x r15 = 0x%.16x\n"
-	     "rip = 0x%.16x rflags = 0x%.16x cs = 0x%.16x fs = 0x%.16x\n"
-	     "gs = 0x%.16x", uc->uc_mcontext->__ss.__rax, uc->uc_mcontext->__ss.__rbx,
+  sig_printf(dump64, uc->uc_mcontext->__ss.__rax, uc->uc_mcontext->__ss.__rbx,
 	     uc->uc_mcontext->__ss.__rcx, uc->uc_mcontext->__ss.__rdx, uc->uc_mcontext->__ss.__rdi,
 	     uc->uc_mcontext->__ss.__rsi, uc->uc_mcontext->__ss.__rbp, uc->uc_mcontext->__ss.__rsp,
 	     uc->uc_mcontext->__ss.__r8, uc->uc_mcontext->__ss.__r9, uc->uc_mcontext->__ss.__r10,
@@ -654,11 +665,7 @@ dump_machine_state(uc)
 	     uc->uc_mcontext->__ss.__rflags, uc->uc_mcontext->__ss.__cs, uc->uc_mcontext->__ss.__fs,
 	     uc->uc_mcontext->__ss.__gs);
 #elif !defined(__LP64__) && defined(__APPLE__)
-  sig_printf("eax = 0x%.8x ebx = 0x%.8x ecx = 0x%.8x edx = 0x%.8x\n"
-	     "edi = 0x%.8x esi = 0x%.8x ebp = 0x%.8x esp = 0x%.8x\n"
-	     "ss = 0x%.8x eflags = 0x%.8x eip = 0x%.8x cs = 0x%.8x\n"
-	     "ds = 0x%.8x es = 0x%.8x fs = 0x%.8x gs = 0x%.8x\n",
-	     uc->uc_mcontext->__ss.__eax, uc->uc_mcontext->__ss.__ebx,
+  sig_printf(dump32, uc->uc_mcontext->__ss.__eax, uc->uc_mcontext->__ss.__ebx,
 	     uc->uc_mcontext->__ss.__ecx, uc->uc_mcontext->__ss.__edx,
 	     uc->uc_mcontext->__ss.__edi, uc->uc_mcontext->__ss.__esi,
 	     uc->uc_mcontext->__ss.__ebp, uc->uc_mcontext->__ss.__esp,
@@ -667,11 +674,7 @@ dump_machine_state(uc)
 	     uc->uc_mcontext->__ss.__ds, uc->uc_mcontext->__ss.__es,
 	     uc->uc_mcontext->__ss.__fs, uc->uc_mcontext->__ss.__gs);
 #elif defined(__i386__)
-  sig_printf("eax = 0x%.8x ebx = 0x%.8x ecx = 0x%.8x edx = 0x%.8x\n"
-             "edi = 0x%.8x esi = 0x%.8x ebp = 0x%.8x esp = 0x%.8x\n"
-             "ss = 0x%.8x eflags = 0x%.8x eip = 0x%.8x cs = 0x%.8x\n"
-             "ds = 0x%.8x es = 0x%.8x fs = 0x%.8x gs = 0x%.8x\n",
-	     uc->uc_mcontext.gregs[REG_EAX], uc->uc_mcontext.gregs[REG_EBX],
+  sig_printf(dump32, uc->uc_mcontext.gregs[REG_EAX], uc->uc_mcontext.gregs[REG_EBX],
 	     uc->uc_mcontext.gregs[REG_ECX], uc->uc_mcontext.gregs[REG_EDX],
 	     uc->uc_mcontext.gregs[REG_EDI], uc->uc_mcontext.gregs[REG_ESI],
 	     uc->uc_mcontext.gregs[REG_EBP], uc->uc_mcontext.gregs[REG_ESP],
@@ -679,13 +682,8 @@ dump_machine_state(uc)
 	     uc->uc_mcontext.gregs[REG_EIP], uc->uc_mcontext.gregs[REG_EIP],
 	     uc->uc_mcontext.gregs[REG_DS], uc->uc_mcontext.gregs[REG_ES],
 	     uc->uc_mcontext.gregs[REG_FS], uc->uc_mcontext.gregs[REG_FS]);
-#else
-  sig_printf("rax = 0x%.16x rbx = 0x%.16x rcx = 0x%.16x rdx = 0x%.16x\n"
-             "rdi = 0x%.16x rsi = 0x%.16x rbp = 0x%.16x rsp = 0x%.16x\n"
-             "r8 = 0x%.16x r9 = 0x%.16x  r10 = 0x%.16x r11 = 0x%.16x\n"
-             "r12 = 0x%.16x r13 = 0x%.16x r14 = 0x%.16x r15 = 0x%.16x\n"
-             "rip = 0x%.16x rflags = 0x%.16x csgsfs = 0x%.16x",
-	     uc->uc_mcontext.gregs[REG_RAX], uc->uc_mcontext.gregs[REG_RBX],
+#elif defined(__x86_64__)
+  sig_printf(dump64, uc->uc_mcontext.gregs[REG_RAX], uc->uc_mcontext.gregs[REG_RBX],
 	     uc->uc_mcontext.gregs[REG_RCX], uc->uc_mcontext.gregs[REG_RDX],
 	     uc->uc_mcontext.gregs[REG_RDI], uc->uc_mcontext.gregs[REG_RSI],
 	     uc->uc_mcontext.gregs[REG_RBP], uc->uc_mcontext.gregs[REG_RSP],
@@ -695,6 +693,7 @@ dump_machine_state(uc)
 	     uc->uc_mcontext.gregs[REG_R14], uc->uc_mcontext.gregs[REG_R15],
 	     uc->uc_mcontext.gregs[REG_RIP], uc->uc_mcontext.gregs[REG_EFL],
 	     uc->uc_mcontext.gregs[REG_CSGSFS]);
+#else
 #endif
 }
 
@@ -713,12 +712,14 @@ sigbus(sig, ip, context)
     return;
   }
 #endif
+
+  dump_machine_state(context);
   if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
     /* we hit the guard page, print out a warning to help app developers */
-    sig_printf("Thread stack overflow! Try increasing it!\n\n");
+    rb_bug("Thread stack overflow! Try increasing it!");
+  } else {
+    rb_bug("Bus Error");
   }
-  dump_machine_state(context);
-  rb_bug("Bus Error");
 }
 
 #else /* !defined(POSIX_SIGNAL) */
@@ -759,12 +760,13 @@ sigsegv(sig, ip, context)
 
   extern int ruby_gc_stress;
   ruby_gc_stress = 0;
+  dump_machine_state(context);
   if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
     /* we hit the guard page, print out a warning to help app developers */
-    sig_printf("Thread stack overflow! Try increasing it!\n\n");
+    rb_bug("Thread stack overflow! Try increasing it!");
+  } else {
+    rb_bug("Segmentation fault");
   }
-  dump_machine_state(context);
-  rb_bug("Segmentation fault");
 }
 
 #else /* !defined(POSIX_SIGNAL) */
@@ -1128,7 +1130,7 @@ install_sighandler(signum, handler)
 
     old = ruby_signal(signum, handler);
     if (old != SIG_DFL) {
-      ruby_signal(signum, old);
+       ruby_signal(signum, old);
     }
 }
 

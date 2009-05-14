@@ -10605,37 +10605,6 @@ rb_thread_save_context(th)
     len = ruby_stack_length(&pos);
     th->stk_len = len;
     th->stk_pos = pos;
-    /*
-    if (len > th->stk_max) {
-	VALUE *ptr = realloc(th->stk_ptr, sizeof(VALUE) * len);
-	if (!ptr) rb_memerror();
-	th->stk_ptr = ptr;
-	th->stk_max = len;
-    }
-    th->stk_len = len;
-    FLUSH_REGISTER_WINDOWS;
-    MEMCPY(th->stk_ptr, th->stk_pos, VALUE, th->stk_len);
-    
-#ifdef __ia64
-    th->bstr_pos = rb_gc_register_stack_start;
-    len = (VALUE*)rb_ia64_bsp() - th->bstr_pos;
-    th->bstr_len = 0;
-    if (len > th->bstr_max) {
-        VALUE *ptr = realloc(th->bstr_ptr, sizeof(VALUE) * len);
-        if (!ptr) rb_memerror();
-        th->bstr_ptr = ptr;
-        th->bstr_max = len;
-    }
-    th->bstr_len = len;
-    rb_ia64_flushrs();
-    MEMCPY(th->bstr_ptr, th->bstr_pos, VALUE, th->bstr_len);
-#endif
-#ifdef SAVE_WIN32_EXCEPTION_LIST
-    th->win32_exception_list = win32_get_exception_list();
-#endif
-	*/
-
-    /** XXX do something when you go over stack limit **/
     th->frame = ruby_frame;
     th->scope = ruby_scope;
     ruby_scope->flags |= SCOPE_DONT_RECYCLE;
@@ -10745,13 +10714,6 @@ rb_thread_restore_context_0(rb_thread_t th, int exit)
 #endif
     tmp = th;
     ex = exit;
-/*
-    FLUSH_REGISTER_WINDOWS;
-    MEMCPY(tmp->stk_pos, tmp->stk_ptr, VALUE, tmp->stk_len);
-#ifdef __ia64
-    MEMCPY(tmp->bstr_pos, tmp->bstr_ptr, VALUE, tmp->bstr_len);
-#endif
-    */
 
     tval = rb_lastline_get();
     rb_lastline_set(tmp->last_line);
@@ -10843,8 +10805,7 @@ rb_thread_restore_context(th, exit)
     int exit;
 {
     if (!th->stk_ptr && th != main_thread) rb_bug("unsaved context");
- //   stack_extend(th, exit);
- 		rb_thread_restore_context_0(th, exit);
+    rb_thread_restore_context_0(th, exit);
 }
 
 static void
@@ -10863,7 +10824,6 @@ rb_thread_die(th)
 {
     th->thgroup = 0;
     th->status = THREAD_KILLED;
-    // stack_free(th);
 }
 
 static void
@@ -12225,11 +12185,11 @@ rb_thread_alloc(klass)
     THREAD_ALLOC(th);
     th->thread = Data_Wrap_Struct(klass, thread_mark, thread_free, th);
 
-    /* if main_thread != NULL, then this is NOT the main thread, so 
-     * we create a heap-stack 
+    /* if main_thread != NULL, then this is NOT the main thread, so
+     * we create a heap-stack
      */
     if (main_thread) {
-      /* Allocate stack, don't forget to add 1 extra word because of the MATH below*/
+      /* Allocate stack, don't forget to add 1 extra word because of the MATH below */
       unsigned int pagesize = getpagesize();
       unsigned int total_size = rb_thread_stack_size + pagesize + sizeof(int);
       void *stack_area = NULL;
@@ -12263,7 +12223,7 @@ rb_thread_alloc(klass)
       th->stk_base = th->stk_ptr + ((total_size - sizeof(int))/sizeof(VALUE *));
       th->stk_len = rb_thread_stack_size;
     } else {
-      th->stk_ptr = th->stk_pos = (VALUE *)1;
+      th->stk_ptr = th->stk_pos = rb_gc_stack_start;
     }
 
     for (vars = th->dyna_vars; vars; vars = vars->next) {
@@ -12421,13 +12381,14 @@ rb_thread_start_0(fn, arg, th)
                           "calll *%1\n"
                           :: "r" (th->stk_base),
                              "r" (rb_thread_start_2));
-#else /* !defined(__i386__) */
+#elif defined(__x86_64__)
     __asm__ __volatile__ ("movq %0, %%rsp\n\t"
                           "callq *%1\n"
                           :: "r" (th->stk_base),
                              "r" (rb_thread_start_2));
-#endif /* defined(__i386__) */
-
+#else
+    #error unsupported architecture!
+#endif
     /* NOTREACHED */
     return 0;
 }
