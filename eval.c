@@ -10191,6 +10191,7 @@ win32_set_exception_list(p)
 int rb_thread_pending = 0;
 
 VALUE rb_cThread;
+static unsigned int rb_thread_stack_size;
 
 extern VALUE rb_last_status;
 
@@ -10863,7 +10864,7 @@ rb_thread_restore_context(th, exit)
     rb_thread_t th;
     int exit;
 {
-    if (!th->stk_ptr) rb_bug("unsaved context");
+    if (!th->stk_ptr && th != main_thread) rb_bug("unsaved context");
  //   stack_extend(th, exit);
  		rb_thread_restore_context_0(th, exit);
 }
@@ -12236,11 +12237,6 @@ rb_thread_group(thread)
     }\
 } while (0)
 
-/**
- * Start with 16k thread stacks and a 1 page guard region.
- */
-#define __THREAD_STACK_SIZE (1024 * 16)
-
 static rb_thread_t
 rb_thread_alloc(klass)
     VALUE klass;
@@ -12257,7 +12253,7 @@ rb_thread_alloc(klass)
     if (main_thread) {
       /* Allocate stack, don't forget to add 1 extra word because of the MATH below*/
       unsigned int pagesize = getpagesize();
-      unsigned int total_size = __THREAD_STACK_SIZE + pagesize + sizeof(int);
+      unsigned int total_size = rb_thread_stack_size + pagesize + sizeof(int);
       void *stack_area = NULL;
 
       stack_area = mmap(NULL, total_size, PROT_READ | PROT_WRITE | PROT_EXEC,
@@ -12287,9 +12283,9 @@ rb_thread_alloc(klass)
        *     or push[lq] something else on to the stack if you inted to do a ret.
        */
       th->stk_base = th->stk_ptr + ((total_size - sizeof(int))/sizeof(VALUE *));
-      th->stk_len = __THREAD_STACK_SIZE;
+      th->stk_len = rb_thread_stack_size;
     } else {
-      th->stk_ptr = th->stk_pos = 1;
+      th->stk_ptr = th->stk_pos = (VALUE *)1;
     }
 
     for (vars = th->dyna_vars; vars; vars = vars->next) {
@@ -12834,6 +12830,43 @@ rb_thread_cleanup()
 	}
     }
     END_FOREACH_FROM(curr, th);
+}
+
+/*
+ * call-seq:
+ *    Thread.critical    => fixnum
+ *
+ * Returns the thread stack size in bytes
+ */
+static VALUE
+rb_thread_stacksize_get()
+{
+  return INT2FIX(rb_thread_stack_size);
+}
+
+/*
+ * call-seq:
+ *    Thread.stacksize= fixnum => Qnil
+ *
+ * Sets the global thread stacksize and returns Qnil.
+ */
+static VALUE
+rb_thread_stacksize_set(obj, val)
+     VALUE obj;
+     VALUE val;
+{
+
+  unsigned int size = FIX2UINT(val);
+
+  /* 16byte alignment works for both x86 and x86_64 */
+  if (size & (~0xf)) {
+    size += 0x10;
+    size = size & (~0xf);
+  }
+
+  rb_thread_stack_size = size;
+
+  return Qnil;
 }
 
 int rb_thread_critical;
@@ -13692,6 +13725,8 @@ Init_Thread()
 {
     VALUE cThGroup;
 
+    rb_thread_stack_size = (1024 * 1024);
+
     recursive_key = rb_intern("__recursive_key__");
     rb_eThreadError = rb_define_class("ThreadError", rb_eStandardError);
     rb_cThread = rb_define_class("Thread", rb_cObject);
@@ -13715,6 +13750,9 @@ Init_Thread()
 
     rb_define_singleton_method(rb_cThread, "abort_on_exception", rb_thread_s_abort_exc, 0);
     rb_define_singleton_method(rb_cThread, "abort_on_exception=", rb_thread_s_abort_exc_set, 1);
+
+    rb_define_singleton_method(rb_cThread, "stacksize", rb_thread_stacksize_get, 0);
+    rb_define_singleton_method(rb_cThread, "stacksize=", rb_thread_stacksize_set, 1);
 
     rb_define_method(rb_cThread, "run", rb_thread_run, 0);
     rb_define_method(rb_cThread, "wakeup", rb_thread_wakeup, 0);
