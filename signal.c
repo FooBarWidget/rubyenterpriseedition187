@@ -14,6 +14,7 @@
 
 #include "ruby.h"
 #include "rubysig.h"
+#include "node.h"
 #include <signal.h>
 #include <stdio.h>
 
@@ -606,23 +607,6 @@ sighandler(sig)
     }
 }
 
-#ifdef SIGBUS
-static RETSIGTYPE sigbus _((int));
-static RETSIGTYPE
-sigbus(sig)
-    int sig;
-{
-#if defined(HAVE_NATIVETHREAD) && defined(HAVE_NATIVETHREAD_KILL)
-    if (!is_ruby_native_thread() && !rb_trap_accept_nativethreads[sig]) {
-        sigsend_to_ruby_thread(sig);
-        return;
-    }
-#endif
-
-    rb_bug("Bus Error");
-}
-#endif
-
 #include <stdio.h>
 #ifdef HAVE_STDARG_PROTOTYPES
 #include <stdarg.h>
@@ -714,6 +698,49 @@ dump_machine_state(uc)
 #endif
 }
 
+#ifdef SIGBUS
+#ifdef POSIX_SIGNAL
+static void sigbus _((int, siginfo_t*, void*));
+static void
+sigbus(sig, ip, context)
+     int sig;
+     siginfo_t *ip;
+     void *context;
+{
+#if defined(HAVE_NATIVETHREAD) && defined(HAVE_NATIVETHREAD_KILL)
+  if (!is_ruby_native_thread() && !rb_trap_accept_nativethreads[sig]) {
+    sigsend_to_ruby_thread(sig);
+    return;
+  }
+#endif
+  if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
+    /* we hit the guard page, print out a warning to help app developers */
+    sig_printf("Thread stack overflow! Try increasing it!\n\n");
+  }
+  dump_machine_state(context);
+  rb_bug("Bus Error");
+}
+
+#else /* !defined(POSIX_SIGNAL) */
+
+static RETSIGTYPE sigbus _((int));
+static RETSIGTYPE
+sigbus(sig)
+    int sig;
+{
+#if defined(HAVE_NATIVETHREAD) && defined(HAVE_NATIVETHREAD_KILL)
+    if (!is_ruby_native_thread() && !rb_trap_accept_nativethreads[sig]) {
+        sigsend_to_ruby_thread(sig);
+        return;
+    }
+#endif
+
+    rb_bug("Bus Error");
+}
+#endif
+#endif
+
+
 #ifdef SIGSEGV
 #ifdef POSIX_SIGNAL
 static void sigsegv _((int, siginfo_t*, void*));
@@ -732,11 +759,15 @@ sigsegv(sig, ip, context)
 
   extern int ruby_gc_stress;
   ruby_gc_stress = 0;
+  if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
+    /* we hit the guard page, print out a warning to help app developers */
+    sig_printf("Thread stack overflow! Try increasing it!\n\n");
+  }
   dump_machine_state(context);
   rb_bug("Segmentation fault");
 }
 
-#else
+#else /* !defined(POSIX_SIGNAL) */
 
 static RETSIGTYPE sigsegv _((int));
 static RETSIGTYPE
