@@ -1439,8 +1439,6 @@ garbage_collect()
 	rb_bug("cross-thread violation on rb_gc()");
     }
 #endif
-    // XXX: Use to restrict GC to main thread only
-    // if (rb_curr_thread!=rb_main_thread || dont_gc || during_gc) {
     if (dont_gc || during_gc) {
 	if (!freelist) {
 	    add_heap();
@@ -1451,11 +1449,6 @@ garbage_collect()
     during_gc++;
 
     init_mark_stack();
-
-    if (rb_curr_thread == rb_main_thread)
-      gc_mark((VALUE)ruby_current_node, 0);
-    else
-      gc_mark((VALUE)rb_main_thread->node, 0);
 
     /* mark frame stack */
     if (rb_curr_thread == rb_main_thread)
@@ -1473,27 +1466,35 @@ garbage_collect()
 	    }
 	}
     }
-    if (rb_curr_thread == rb_main_thread)
+
+    if (rb_curr_thread == rb_main_thread) {
+      gc_mark((VALUE)ruby_current_node, 0);
       gc_mark((VALUE)ruby_scope, 0);
-    else
-      gc_mark((VALUE)rb_main_thread->scope, 0);
-    if (rb_curr_thread == rb_main_thread)
       gc_mark((VALUE)ruby_dyna_vars, 0);
-    else
+    } else {
+      gc_mark((VALUE)rb_main_thread->node, 0);
+      gc_mark((VALUE)rb_main_thread->scope, 0);
       gc_mark((VALUE)rb_main_thread->dyna_vars, 0);
-    if (finalizer_table) {
-	mark_tbl(finalizer_table, 0);
+
+      /* scan the current thread's stack */
+      rb_gc_mark_locations((VALUE*)STACK_END, rb_curr_thread->stk_base);
     }
 
-    if (rb_curr_thread != rb_main_thread)
-        rb_gc_mark_locations((VALUE*)STACK_END, rb_curr_thread->stk_base);
+    if (finalizer_table) {
+      mark_tbl(finalizer_table, 0);
+    }
 
     FLUSH_REGISTER_WINDOWS;
     /* This assumes that all registers are saved into the jmp_buf (and stack) */
     rb_setjmp(save_regs_gc_mark);
     mark_locations_array((VALUE*)save_regs_gc_mark, sizeof(save_regs_gc_mark) / sizeof(VALUE *));
+
+    /* If this is not the main thread, we need to scan the C stack, so
+     * set STACK_END to the end of the C stack.
+     */
     if (rb_curr_thread != rb_main_thread)
       STACK_END = rb_main_thread->stk_pos;
+
 #if STACK_GROW_DIRECTION < 0
     rb_gc_mark_locations((VALUE*)STACK_END, rb_gc_stack_start);
 #elif STACK_GROW_DIRECTION > 0
