@@ -10542,7 +10542,7 @@ static inline void
 stack_free(th)
     rb_thread_t th;
 {
-    if (th->stk_ptr) free(th->stk_ptr);
+  if (th->stk_ptr) munmap(th->stk_ptr, th->stk_size);
     th->stk_ptr = 0;
 #ifdef __ia64
     if (th->bstr_ptr) free(th->bstr_ptr);
@@ -12138,6 +12138,7 @@ rb_thread_group(thread)
 \
     th->stk_ptr = 0;\
     th->stk_len = 0;\
+    th->stk_size = 0;\
     th->stk_max = 0;\
     th->wait_for = 0;\
     IA64_INIT(th->bstr_ptr = 0);\
@@ -12203,6 +12204,7 @@ rb_thread_alloc(klass)
       }
 
       th->stk_ptr = th->stk_pos = stack_area;
+      th->stk_size = total_size;
 
       if (mprotect(th->stk_ptr, pagesize, PROT_EMPTY) == -1) {
 	fprintf(stderr, "Failed to create thread guard region: %s\n", strerror(errno));

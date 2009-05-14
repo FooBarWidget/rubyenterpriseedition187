@@ -411,6 +411,7 @@ struct rb_thread {
 
     size_t stk_len;
     size_t stk_max;
+    size_t stk_size;
     VALUE *stk_ptr;
     VALUE *stk_pos;
     VALUE *stk_base;
