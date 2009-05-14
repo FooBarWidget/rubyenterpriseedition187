@@ -12270,7 +12270,7 @@ rb_thread_alloc(klass)
 
       th->stk_ptr = th->stk_pos = stack_area;
 
-      if (mprotect(th->stk_ptr, pagesize, PROT_NONE) == -1) {
+      if (mprotect(th->stk_ptr, pagesize, PROT_EMPTY) == -1) {
 	fprintf(stderr, "Failed to create thread guard region: %s\n", strerror(errno));
 	rb_memerror();
       }
