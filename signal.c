@@ -738,7 +738,7 @@ sigsegv(sig, ip, context)
 
 #else
 
-static RETSIGTYPE sigsegv _((int, siginfo_t*, void*));
+static RETSIGTYPE sigsegv _((int));
 static RETSIGTYPE
 sigsegv(sig)
     int sig;
