@@ -709,8 +709,8 @@ dump_machine_state(uc)
 	     uc->uc_mcontext.gregs[REG_R10], uc->uc_mcontext.gregs[REG_R11],
 	     uc->uc_mcontext.gregs[REG_R12], uc->uc_mcontext.gregs[REG_R13],
 	     uc->uc_mcontext.gregs[REG_R14], uc->uc_mcontext.gregs[REG_R15],
-	     uc->uc_mcontext.gregs[REG_RIP], uc->uc_mcontext.gregs[REG_REFL],
-	     uc->uc_mcontext.gregs[REG_CSFSGS]);
+	     uc->uc_mcontext.gregs[REG_RIP], uc->uc_mcontext.gregs[REG_EFL],
+	     uc->uc_mcontext.gregs[REG_CSGSFS]);
 #endif
 }
 
