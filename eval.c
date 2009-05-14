@@ -12812,7 +12812,7 @@ rb_thread_cleanup()
 
 /*
  * call-seq:
- *    Thread.stacksize    => fixnum
+ *    Thread.stack_size    => fixnum
  *
  * Returns the thread stack size in bytes
  */
@@ -12824,7 +12824,7 @@ rb_thread_stacksize_get()
 
 /*
  * call-seq:
- *    Thread.stacksize= fixnum => Qnil
+ *    Thread.stack_size= fixnum => Qnil
  *
  * Sets the global thread stacksize and returns Qnil.
  */
@@ -13729,8 +13729,8 @@ Init_Thread()
     rb_define_singleton_method(rb_cThread, "abort_on_exception", rb_thread_s_abort_exc, 0);
     rb_define_singleton_method(rb_cThread, "abort_on_exception=", rb_thread_s_abort_exc_set, 1);
 
-    rb_define_singleton_method(rb_cThread, "stacksize", rb_thread_stacksize_get, 0);
-    rb_define_singleton_method(rb_cThread, "stacksize=", rb_thread_stacksize_set, 1);
+    rb_define_singleton_method(rb_cThread, "stack_size", rb_thread_stacksize_get, 0);
+    rb_define_singleton_method(rb_cThread, "stack_size=", rb_thread_stacksize_set, 1);
 
     rb_define_method(rb_cThread, "run", rb_thread_run, 0);
     rb_define_method(rb_cThread, "wakeup", rb_thread_wakeup, 0);
