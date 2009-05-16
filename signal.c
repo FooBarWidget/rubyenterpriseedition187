@@ -697,6 +697,15 @@ dump_machine_state(uc)
 #endif
 }
 
+static int
+check_guard(caddr_t fault_addr, rb_thread_t th) {
+  if(fault_addr <= (caddr_t)rb_curr_thread->guard &&
+     fault_addr >= (caddr_t)rb_curr_thread->stk_ptr) {
+    return 1;
+  }
+  return 0;
+}
+
 #ifdef SIGBUS
 #ifdef POSIX_SIGNAL
 static void sigbus _((int, siginfo_t*, void*));
@@ -714,8 +723,7 @@ sigbus(sig, ip, context)
 #endif
 
   dump_machine_state(context);
-  if ((caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->guard &&
-      (caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->stk_ptr) {
+  if (check_guard((caddr_t)ip->si_addr, rb_curr_thread)) {
     /* we hit the guard page, print out a warning to help app developers */
     rb_bug("Thread stack overflow! Try increasing it!");
   } else {
@@ -762,8 +770,7 @@ sigsegv(sig, ip, context)
   extern int ruby_gc_stress;
   ruby_gc_stress = 0;
   dump_machine_state(context);
-  if ((caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->guard &&
-      (caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->stk_ptr) {
+  if (check_guard((caddr_t)ip->si_addr, rb_curr_thread)) {
     /* we hit the guard page, print out a warning to help app developers */
     rb_bug("Thread stack overflow! Try increasing it!");
   } else {
