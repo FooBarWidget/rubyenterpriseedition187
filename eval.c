@@ -12211,7 +12211,7 @@ rb_thread_alloc(klass)
 	rb_memerror();
       }
 
-      th->guard = th->stk_ptr;
+      th->guard = th->stk_ptr + (pagesize/sizeof(VALUE *));
 
       /* point stk_base at the top of the stack */
       /* ASSUMPTIONS:

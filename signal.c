@@ -714,7 +714,8 @@ sigbus(sig, ip, context)
 #endif
 
   dump_machine_state(context);
-  if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
+  if ((caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->guard &&
+      (caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->stk_ptr) {
     /* we hit the guard page, print out a warning to help app developers */
     rb_bug("Thread stack overflow! Try increasing it!");
   } else {
@@ -761,7 +762,8 @@ sigsegv(sig, ip, context)
   extern int ruby_gc_stress;
   ruby_gc_stress = 0;
   dump_machine_state(context);
-  if ((caddr_t)ip->si_addr >= (caddr_t)rb_curr_thread->guard) {
+  if ((caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->guard &&
+      (caddr_t)ip->si_addr <= (caddr_t)rb_curr_thread->stk_ptr) {
     /* we hit the guard page, print out a warning to help app developers */
     rb_bug("Thread stack overflow! Try increasing it!");
   } else {
