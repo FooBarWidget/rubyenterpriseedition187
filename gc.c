@@ -715,8 +715,6 @@ VALUE *rb_gc_stack_start = 0;
 VALUE *rb_gc_register_stack_start = 0;
 #endif
 
-VALUE *rb_gc_stack_end = (VALUE *)STACK_GROW_DIRECTION;
-
 
 #ifdef DJGPP
 /* set stack size (http://www.delorie.com/djgpp/v2faq/faq15_9.html) */
@@ -813,22 +811,24 @@ ruby_stack_check()
 #if STACK_WIPE_METHOD
 void rb_gc_wipe_stack(void)
 {
-  VALUE *stack_end = rb_gc_stack_end;
-  VALUE *sp = __sp();
-  rb_gc_stack_end = sp;
+  if (curr_thread) {
+    VALUE *stack_end = rb_curr_thread->gc_stack_end;
+    VALUE *sp = __sp();
+    rb_curr_thread->gc_stack_end = sp;
 #if STACK_WIPE_METHOD == 1
 #warning clearing of "ghost references" from the call stack has been disabled
 #elif STACK_WIPE_METHOD == 2  /* alloca ghost stack before clearing it */
-  if (__stack_past(sp, stack_end)) {
-    size_t bytes = __stack_depth((char *)stack_end, (char *)sp);
-    STACK_UPPER(sp = nativeAllocA(bytes), stack_end = nativeAllocA(bytes));
-    __stack_zero(stack_end, sp);
-  }
+    if (__stack_past(sp, stack_end)) {
+      size_t bytes = __stack_depth((char *)stack_end, (char *)sp);
+      STACK_UPPER(sp = nativeAllocA(bytes), stack_end = nativeAllocA(bytes));
+      __stack_zero(stack_end, sp);
+    }
 #elif STACK_WIPE_METHOD == 3    /* clear unallocated area past stack pointer */
-  __stack_zero(stack_end, sp);  /* will crash if compiler pushes a temp. here */
+    __stack_zero(stack_end, sp);  /* will crash if compiler pushes a temp. here */
 #else
 #error unsupported method of clearing ghost references from the stack
 #endif
+  }
 }
 #else
 #warning clearing of "ghost references" from the call stack completely disabled
@@ -1803,10 +1803,10 @@ garbage_collect()
   garbage_collect_0(top);
 # else /* no native alloca() available */
   garbage_collect_0(top);
-  {
+  if (rb_curr_thread) {
     VALUE *paddedLimit = __stack_grow(gc_stack_limit, GC_STACK_PAD);
-    if (__stack_past(rb_gc_stack_end, paddedLimit))
-      rb_gc_stack_end = paddedLimit;
+    if (__stack_past(rb_curr_thread->gc_stack_end, paddedLimit))
+      rb_curr_thread->gc_stack_end = paddedLimit;
   }
   rb_gc_wipe_stack();  /* wipe the whole stack area reserved for this gc */  
 # endif
@@ -2659,9 +2659,6 @@ Init_GC()
 {
     VALUE rb_mObSpace;
 
-#if !STACK_GROW_DIRECTION
-    rb_gc_stack_end = stack_grow_direction(&rb_mObSpace);
-#endif
     rb_mGC = rb_define_module("GC");
     rb_define_singleton_method(rb_mGC, "start", rb_gc_start, 0);
     rb_define_singleton_method(rb_mGC, "enable", rb_gc_enable, 0);

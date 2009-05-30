@@ -416,6 +416,7 @@ struct rb_thread {
     VALUE *stk_pos;
     VALUE *stk_base;
     VALUE *guard;
+    VALUE *gc_stack_end;
 #ifdef __ia64
     size_t bstr_len;
     size_t bstr_max;
