@@ -119,7 +119,7 @@ readline_readline(argc, argv, self)
 	result = rb_tainted_str_new2(buff);
     else
 	result = Qnil;
-    if (buff) free(buff);
+    if (buff) system_free(buff);
     return result;
 }
 
@@ -169,6 +169,7 @@ readline_attempted_completion_function(text, start, end)
     char **result;
     int case_fold;
     int i, matches;
+    size_t len;
 
     proc = rb_attr_get(mReadline, completion_proc);
     if (NIL_P(proc))
@@ -183,16 +184,19 @@ readline_attempted_completion_function(text, start, end)
     matches = RARRAY(ary)->len;
     if (matches == 0)
 	return NULL;
-    result = ALLOC_N(char *, matches + 2);
+    result = system_malloc(sizeof(char *) * (matches + 2));
     for (i = 0; i < matches; i++) {
 	temp = rb_obj_as_string(RARRAY(ary)->ptr[i]);
-	result[i + 1] = ALLOC_N(char, RSTRING(temp)->len + 1);
+	result[i + 1] = system_malloc(sizeof(char) * (RSTRING(temp)->len + 1));
 	strcpy(result[i + 1], RSTRING(temp)->ptr);
     }
     result[matches + 1] = NULL;
 
     if (matches == 1) {
-        result[0] = strdup(result[1]);
+	len = strlen(result[1]);
+	result[0] = (char *) system_malloc(sizeof(char) * (len + 1));
+	memcpy(result[0], result[1], sizeof(char) * len);
+	result[0][len] = '\0';
     }
     else {
 	register int i = 1;
@@ -218,7 +222,7 @@ readline_attempted_completion_function(text, start, end)
 	    if (low > si) low = si;
 	    i++;
 	}
-	result[0] = ALLOC_N(char, low + 1);
+	result[0] = system_malloc(sizeof(char) * (low + 1));
 	strncpy(result[0], result[1], low);
 	result[0][low] = '\0';
     }
@@ -605,8 +609,8 @@ rb_remove_history(index)
     entry = remove_history(index);
     if (entry) {
         val = rb_tainted_str_new2(entry->line);
-        free(entry->line);
-        free(entry);
+        system_free((void *) entry->line);
+        system_free(entry);
         return val;
     }
     return Qnil;
@@ -705,9 +709,9 @@ filename_completion_proc_call(self, str)
 	result = rb_ary_new();
 	for (i = 0; matches[i]; i++) {
 	    rb_ary_push(result, rb_tainted_str_new2(matches[i]));
-	    free(matches[i]);
+	    system_free(matches[i]);
 	}
-	free(matches);
+	system_free(matches);
 	if (RARRAY(result)->len >= 2)
 	    rb_ary_shift(result);
     }
@@ -732,9 +736,9 @@ username_completion_proc_call(self, str)
 	result = rb_ary_new();
 	for (i = 0; matches[i]; i++) {
 	    rb_ary_push(result, rb_tainted_str_new2(matches[i]));
-	    free(matches[i]);
+	    system_free(matches[i]);
 	}
-	free(matches);
+	system_free(matches);
 	if (RARRAY(result)->len >= 2)
 	    rb_ary_shift(result);
     }

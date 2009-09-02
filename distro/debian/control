@@ -1,0 +1,15 @@
+Package: ruby-enterprise
+Version: <%= VENDOR_RUBY_VERSION %>-<%= REE_VERSION %>
+Section: interpreters
+Priority: optional
+Architecture: <%= arch %>
+Essential: no
+Depends: libc6 (>= 2.6.1-1)
+Pre-Depends: 
+Suggests: 
+Maintainer: Hongli Lai <hongli@phusion.nl>
+Conflicts: 
+Replaces: 
+Provides: 
+Installed-Size: <%= installed_size %>
+Description: Ruby Enterprise Edition.
