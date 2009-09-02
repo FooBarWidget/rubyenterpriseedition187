@@ -750,12 +750,12 @@ VALUE *__sp(void) {
 #endif
 
 #if STACK_GROW_DIRECTION < 0
-# define STACK_LENGTH  (rb_gc_stack_start - STACK_END)
+# define STACK_LENGTH(start)  ((start) - STACK_END)
 #elif STACK_GROW_DIRECTION > 0
-# define STACK_LENGTH  (STACK_END - rb_gc_stack_start + 1)
+# define STACK_LENGTH(start)  (STACK_END - (start) + 1)
 #else
-# define STACK_LENGTH  ((STACK_END < rb_gc_stack_start) ? rb_gc_stack_start - STACK_END\
-                                           : STACK_END - rb_gc_stack_start + 1)
+# define STACK_LENGTH(start)  ((STACK_END < (start)) ? (start) - STACK_END\
+                                           : STACK_END - (start) + 1)
 #endif
 #if STACK_GROW_DIRECTION > 0
 # define STACK_UPPER(a, b) a
@@ -778,15 +778,31 @@ ruby_stack_length(base)
     VALUE **base;
 {
     SET_STACK_END;
+    VALUE *start;
+    if (rb_curr_thread == rb_main_thread) {
+	start = rb_gc_stack_start;
+    } else {
+	start = rb_curr_thread->stk_base;
+    }
     if (base) *base = STACK_UPPER(start, STACK_END);
-    return STACK_LENGTH;
+    return STACK_LENGTH(start);
 }
 
 int
 ruby_stack_check()
 {
     SET_STACK_END;
-    return __stack_past(stack_limit, STACK_END);
+    if (!rb_main_thread || rb_curr_thread == rb_main_thread) {
+	return __stack_past(stack_limit, STACK_END);
+    } else {
+	/* ruby_stack_check() is only called periodically, but we want to
+	 * detect a stack overflow before the thread's guard area is accessed.
+	 * So we append a '+ getpagesize()' to the address check.
+	 *
+	 * TODO: support architectures on which the stack grows upwards.
+	 */
+	return __stack_past(rb_curr_thread->guard + getpagesize(), STACK_END);
+    }
 }
 
 /*
@@ -1675,10 +1691,12 @@ garbage_collect_0(VALUE *top_frame)
     rb_mark_table_prepare();
     init_mark_stack();
 
-    gc_mark((VALUE)ruby_current_node);
-
     /* mark frame stack */
-    for (frame = ruby_frame; frame; frame = frame->prev) {
+    if (rb_curr_thread == rb_main_thread)
+	frame = ruby_frame;
+    else
+	frame = rb_main_thread->frame;
+    for (; frame; frame = frame->prev) {
 	rb_gc_mark_frame(frame);
 	if (frame->tmp) {
 	    struct FRAME *tmp = frame->tmp;
@@ -1688,11 +1706,29 @@ garbage_collect_0(VALUE *top_frame)
 	    }
 	}
     }
-    gc_mark((VALUE)ruby_scope);
-    gc_mark((VALUE)ruby_dyna_vars);
+    
+    if (rb_curr_thread == rb_main_thread) {
+	gc_mark((VALUE)ruby_current_node);
+	gc_mark((VALUE)ruby_scope);
+	gc_mark((VALUE)ruby_dyna_vars);
+    } else {
+	gc_mark((VALUE)rb_main_thread->node);
+	gc_mark((VALUE)rb_main_thread->scope);
+	gc_mark((VALUE)rb_main_thread->dyna_vars);
+
+	/* scan the current thread's stack */
+	rb_gc_mark_locations(top_frame, rb_curr_thread->stk_base);
+    }
+
     if (finalizer_table) {
 	mark_tbl(finalizer_table);
     }
+
+    /* If this is not the main thread, we need to scan the C stack, so
+     * set top_frame to the end of the C stack.
+     */
+    if (rb_curr_thread != rb_main_thread)
+	top_frame = rb_main_thread->stk_pos;
 
 #if STACK_GROW_DIRECTION < 0
     rb_gc_mark_locations(top_frame, rb_gc_stack_start);
@@ -1713,6 +1749,7 @@ garbage_collect_0(VALUE *top_frame)
     rb_gc_mark_locations((VALUE*)((char*)STACK_END + 2),
 			 (VALUE*)((char*)rb_gc_stack_start + 2));
 #endif
+
     rb_gc_mark_threads();
 
     /* mark protected global variables */
