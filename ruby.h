@@ -460,7 +460,7 @@ struct RBignum {
 #define FL_EXIVAR    (1<<9)
 #define FL_FREEZE    (1<<10)
 
-#define FL_USHIFT    11
+#define FL_USHIFT    12
 
 #define FL_USER0     (1<<(FL_USHIFT+0))
 #define FL_USER1     (1<<(FL_USHIFT+1))
@@ -536,6 +536,8 @@ void rb_define_attr _((VALUE,const char*,int,int));
 void rb_global_variable _((VALUE*));
 void rb_gc_register_address _((VALUE*));
 void rb_gc_unregister_address _((VALUE*));
+
+int rb_gc_is_thread_marked _((VALUE));
 
 ID rb_intern _((const char*));
 const char *rb_id2name _((ID));
