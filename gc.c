@@ -2257,9 +2257,11 @@ static int
 chain_finalized_object(st_data_t key, st_data_t val, st_data_t arg)
 {
     RVALUE *p = (RVALUE *)key, **final_list = (RVALUE **)arg;
-    if ((p->as.basic.flags & (FL_FINALIZE|FL_MARK)) == FL_FINALIZE) {
+    if ((p->as.basic.flags & FL_FINALIZE) && !rb_mark_table_contains(p)) {
 	if (BUILTIN_TYPE(p) != T_DEFERRED) {
-	    p->as.free.flags = FL_MARK | T_DEFERRED; /* remain marked */
+	    /* remain marked */
+	    p->as.free.flags = T_DEFERRED;
+	    rb_mark_table_add(p);
 	    RDATA(p)->dfree = 0;
 	}
 	p->as.free.next = *final_list;
