@@ -1,1 +1,1 @@
-require 'distro/rakefile'
+require 'distro/tasks'
