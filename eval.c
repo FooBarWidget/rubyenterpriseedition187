@@ -1031,7 +1031,7 @@ static struct tag *prot_tag;
     _tag.blkid = 0;			\
     prot_tag = &_tag
 
-#define PROT_NONE   Qfalse	/* 0 */
+#define PROT_EMPTY   Qfalse	/* 0 */
 #define PROT_THREAD Qtrue	/* 2 */
 #define PROT_FUNC   INT2FIX(0)	/* 1 */
 #define PROT_LOOP   INT2FIX(1)	/* 3 */
@@ -1243,7 +1243,7 @@ error_print()
 
     if (NIL_P(ruby_errinfo)) return;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if (EXEC_TAG() == 0) {
 	errat = get_backtrace(ruby_errinfo);
     }
@@ -1404,7 +1404,7 @@ ruby_init()
     /* default visibility is private at toplevel */
     SCOPE_SET(SCOPE_PRIVATE);
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	rb_call_inits();
 	ruby_class = rb_cObject;
@@ -1538,7 +1538,7 @@ ruby_options(argc, argv)
     int state;
 
     Init_stack((void*)&state);
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	ruby_process_options(argc, argv);
     }
@@ -1555,7 +1555,7 @@ void rb_exec_end_proc _((void));
 static void
 ruby_finalize_0()
 {
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if (EXEC_TAG() == 0) {
 	rb_trap_exit();
     }
@@ -1593,7 +1593,7 @@ ruby_cleanup(ex)
     Init_stack((void *)&state);
     ruby_finalize_0();
     errs[0] = ruby_errinfo;
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     PUSH_ITER(ITER_NOT);
     if ((state = EXEC_TAG()) == 0) {
 	rb_thread_cleanup();
@@ -1644,7 +1644,7 @@ ruby_exec_internal()
 {
     int state;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     PUSH_ITER(ITER_NOT);
     /* default visibility is private at toplevel */
     SCOPE_SET(SCOPE_PRIVATE);
@@ -1866,7 +1866,7 @@ rb_eval_cmd(cmd, arg, level)
     }
     if (TYPE(cmd) != T_STRING) {
 	PUSH_ITER(ITER_NOT);
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	ruby_safe_level = level;
 	if ((state = EXEC_TAG()) == 0) {
 	    val = rb_funcall2(cmd, rb_intern("call"), RARRAY(arg)->len, RARRAY(arg)->ptr);
@@ -1888,7 +1888,7 @@ rb_eval_cmd(cmd, arg, level)
 
     ruby_safe_level = level;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	val = eval(ruby_top_self, cmd, Qnil, 0, 0);
     }
@@ -2395,7 +2395,7 @@ is_defined(self, node, buf)
 	val = self;
 	if (node->nd_recv == (NODE *)1) goto check_bound;
       case NODE_CALL:
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    val = rb_eval(self, node->nd_recv);
 	}
@@ -2497,7 +2497,7 @@ is_defined(self, node, buf)
 	break;
 
       case NODE_COLON2:
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    val = rb_eval(self, node->nd_head);
 	}
@@ -2546,7 +2546,7 @@ is_defined(self, node, buf)
 	goto again;
 
       default:
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    rb_eval(self, node);
 	}
@@ -2750,7 +2750,7 @@ call_trace_func(event, node, self, id, klass)
 	    klass = rb_iv_get(klass, "__attached__");
 	}
     }
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     raised = rb_thread_reset_raised(th);
     if ((state = EXEC_TAG()) == 0) {
 	srcfile = rb_str_new2(ruby_sourcefile?ruby_sourcefile:"(ruby)");
@@ -3313,7 +3313,7 @@ rb_eval(self, n)
 	    volatile VALUE e_info = ruby_errinfo;
 	    volatile int rescuing = 0;
 
-	    PUSH_TAG(PROT_NONE);
+	    PUSH_TAG(PROT_EMPTY);
 	    if ((state = EXEC_TAG()) == 0) {
 	      retry_entry:
 		result = rb_eval(self, node->nd_head);
@@ -3362,7 +3362,7 @@ rb_eval(self, n)
 	break;
 
       case NODE_ENSURE:
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    result = rb_eval(self, node->nd_head);
 	}
@@ -3580,7 +3580,7 @@ rb_eval(self, n)
 	    ruby_frame = &frame;
 
 	    PUSH_SCOPE();
-	    PUSH_TAG(PROT_NONE);
+	    PUSH_TAG(PROT_EMPTY);
 	    if (node->nd_rval) {
 		saved_cref = ruby_cref;
 		ruby_cref = (NODE*)node->nd_rval;
@@ -4208,7 +4208,7 @@ module_setup(module, n)
     }
 
     PUSH_CREF(module);
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	EXEC_EVENT_HOOK(RUBY_EVENT_CLASS, n, ruby_cbase,
 			ruby_frame->last_func, ruby_frame->last_class);
@@ -4615,7 +4615,7 @@ rb_longjmp(tag, mesg)
 	VALUE e = ruby_errinfo;
 	int status;
 
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((status = EXEC_TAG()) == 0) {
 	    StringValue(e);
 	    warn_printf("Exception `%s' at %s:%d - %s\n",
@@ -4989,7 +4989,7 @@ rb_yield_0(val, self, klass, flags, avalue)
     var = block->var;
 
     if (var) {
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    NODE *bvar = NULL;
 	  block_var:
@@ -5062,7 +5062,7 @@ rb_yield_0(val, self, klass, flags, avalue)
     ruby_current_node = node;
 
     PUSH_ITER(block->iter);
-    PUSH_TAG(lambda ? PROT_NONE : PROT_YIELD);
+    PUSH_TAG(lambda ? PROT_EMPTY : PROT_YIELD);
     if ((state = EXEC_TAG()) == 0) {
       redo:
 	if (nd_type(node) == NODE_CFUNC || nd_type(node) == NODE_IFUNC) {
@@ -5475,7 +5475,7 @@ rb_rescue2(b_proc, data1, r_proc, data2, va_alist)
     VALUE eclass;
     va_list args;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     switch (state = EXEC_TAG()) {
       case TAG_RETRY:
 	if (!handle) break;
@@ -5533,7 +5533,7 @@ rb_protect(proc, data, state)
     VALUE result = Qnil;	/* OK */
     int status;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     cont_protect = (VALUE)rb_node_newnode(NODE_MEMO, cont_protect, 0, 0);
     if ((status = EXEC_TAG()) == 0) {
 	result = (*proc)(data);
@@ -5561,7 +5561,7 @@ rb_ensure(b_proc, data1, e_proc, data2)
     volatile VALUE result = Qnil;
     VALUE retval;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	result = (*b_proc)(data1);
     }
@@ -5588,7 +5588,7 @@ rb_with_disable_interrupt(proc, data)
 	int thr_critical = rb_thread_critical;
 
 	rb_thread_critical = Qtrue;
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((status = EXEC_TAG()) == 0) {
 	    result = (*proc)(data);
 	}
@@ -6275,7 +6275,7 @@ rb_funcall_rescue(recv, mid, n, va_alist)
 
     va_init_list(ar, n);
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((status = EXEC_TAG()) == 0) {
 	result = vafuncall(recv, mid, n, &ar);
     }
@@ -6550,7 +6550,7 @@ eval(self, src, scope, file, line)
     if (TYPE(ruby_class) == T_ICLASS) {
 	ruby_class = RBASIC(ruby_class)->klass;
     }
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	NODE *node;
 
@@ -6709,7 +6709,7 @@ exec_under(func, under, cbase, args)
 
     mode = scope_vmode;
     SCOPE_SET(SCOPE_PUBLIC);
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	val = (*func)(args);
     }
@@ -7020,7 +7020,7 @@ rb_load(fname, wrap)
     PUSH_SCOPE();
     /* default visibility is private at loading toplevel */
     SCOPE_SET(SCOPE_PRIVATE);
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     state = EXEC_TAG();
     last_func = ruby_frame->last_func;
     last_node = ruby_current_node;
@@ -7079,7 +7079,7 @@ rb_load_protect(fname, wrap, state)
 {
     int status;
 
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((status = EXEC_TAG()) == 0) {
 	rb_load(fname, wrap);
     }
@@ -7400,7 +7400,7 @@ rb_require_safe(fname, safe)
     saved.node = ruby_current_node;
     saved.func = ruby_frame->last_func;
     saved.safe = ruby_safe_level;
-    PUSH_TAG(PROT_NONE);
+    PUSH_TAG(PROT_EMPTY);
     if ((state = EXEC_TAG()) == 0) {
 	VALUE feature, path;
 	long handle;
@@ -8108,7 +8108,7 @@ rb_exec_end_proc()
 	tmp_end_procs = link = ephemeral_end_procs;
 	ephemeral_end_procs = 0;
 	while (link) {
-	    PUSH_TAG(PROT_NONE);
+	    PUSH_TAG(PROT_EMPTY);
 	    if ((status = EXEC_TAG()) == 0) {
 		ruby_safe_level = link->safe;
 		(*link->func)(link->data);
@@ -8126,7 +8126,7 @@ rb_exec_end_proc()
 	tmp_end_procs = link = end_procs;
 	end_procs = 0;
 	while (link) {
-	    PUSH_TAG(PROT_NONE);
+	    PUSH_TAG(PROT_EMPTY);
 	    if ((status = EXEC_TAG()) == 0) {
 		ruby_safe_level = link->safe;
 		(*link->func)(link->data);
@@ -8863,7 +8863,7 @@ proc_invoke(proc, args, self, klass)
     ruby_block = &_block;
     PUSH_ITER(ITER_CUR);
     ruby_frame->iter = ITER_CUR;
-    PUSH_TAG(pcall ? PROT_LAMBDA : PROT_NONE);
+    PUSH_TAG(pcall ? PROT_LAMBDA : PROT_EMPTY);
     state = EXEC_TAG();
     if (state == 0) {
 	proc_set_safe_level(proc);
@@ -13532,7 +13532,7 @@ rb_exec_recursive(func, obj, arg)
 	int state;
 
 	hash = recursive_push(hash, objid);
-	PUSH_TAG(PROT_NONE);
+	PUSH_TAG(PROT_EMPTY);
 	if ((state = EXEC_TAG()) == 0) {
 	    result = (*func) (obj, arg, Qfalse);
 	}
