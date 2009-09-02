@@ -11121,6 +11121,8 @@ rb_thread_die(th)
     stack_free(th);
 }
 
+static int thread_init;
+
 static void
 rb_thread_remove(th)
     rb_thread_t th;
@@ -11131,6 +11133,15 @@ rb_thread_remove(th)
     rb_thread_die(th);
     th->prev->next = th->next;
     th->next->prev = th->prev;
+
+#if defined(HAVE_SETITIMER)
+    /* if this is the last ruby thread, stop timer signals */
+    if (th->next == th->prev && th->next == main_thread) {
+	rb_thread_stop_timer();
+	/* set thread_init to 0 here because process.c calls stop/start_timer across fork/exec */
+	thread_init = 0;
+    }
+#endif
 }
 
 static int
@@ -12486,8 +12497,6 @@ rb_thread_alloc(klass)
     }
     return th;
 }
-
-static int thread_init;
 
 #if defined(_THREAD_SAFE)
 static void
