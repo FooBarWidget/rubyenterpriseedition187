@@ -10,7 +10,6 @@ Ruby Enterprise Edition (REE) is a server-oriented distribution of the official 
 - The ability to obtain backtraces for all running threads, making it easier for one to debug multithreaded applications.
 - Thread scheduler bug fixes and performance improvements. Threading on Ruby Enterprise Edition can be more than 10 times faster than official Ruby 1.8.
 - Various memory management tweaks so that the Ruby interpreter uses less memory on average, even when copy-on-write is not utilized.
-- Performance enhancements for Sparc machines.
 
 Some of these features are gathered from third party Ruby patches:
 link:http://railsbench.rubyforge.org/[RailsBench],
@@ -111,7 +110,7 @@ work better if tcmalloc is installed.
 Compile tcmalloc as follows:
 
 --------------------------
-cd ruby-enterprise-x.x.x/source/vendor/google-perftools-*
+cd ruby-enterprise-x.x.x/source/distro/google-perftools-*
 ./configure --prefix=$PREFIX --disable-dependency-tracking
 make libtcmalloc_minimal.la
 --------------------------
