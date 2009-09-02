@@ -1744,6 +1744,7 @@ garbage_collect_0(VALUE *top_frame)
     } while (!MARK_STACK_EMPTY);
     gc_sweep();
     rb_mark_table_finalize();
+    gc_cycles++;
 }
 
 static void
