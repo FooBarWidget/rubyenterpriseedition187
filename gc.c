@@ -2075,10 +2075,6 @@ garbage_collect_0(VALUE *top_frame)
     if (during_gc) return;
     during_gc++;
 
-    gc_stack_limit = __stack_grow(STACK_END, GC_LEVEL_MAX);
-    rb_mark_table_prepare();
-    init_mark_stack();
-
     if (gc_statistics) {
 	gc_collections++;
 	gettimeofday(&gctv1, NULL);
@@ -2086,6 +2082,10 @@ garbage_collect_0(VALUE *top_frame)
 	    fprintf(gc_data_file, "Garbage collection started\n");
 	}
     }
+
+    gc_stack_limit = __stack_grow(STACK_END, GC_LEVEL_MAX);
+    rb_mark_table_prepare();
+    init_mark_stack();
 
     gc_mark((VALUE)ruby_current_node);
 
