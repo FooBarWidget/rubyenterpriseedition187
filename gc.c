@@ -68,7 +68,19 @@ int _setjmp(), _longjmp();
 #endif
 #define GC_STACK_MAX  (GC_LEVEL_MAX+GC_STACK_PAD)
 
-static VALUE *stack_limit, *gc_stack_limit;
+/* The address of the end of the main thread's application stack. When the
+ * main thread is active, application code may not cause the stack to grow
+ * past this point. Past this point there's still a small area reserved for
+ * garbage collector operations.
+ */
+static VALUE *stack_limit;
+/*
+ * The address of the end of the current thread's GC stack. When running
+ * the GC, the stack may not grow past this point.
+ * The value of this variable is reset every time garbage_collect() is
+ * called.
+ */
+static VALUE *gc_stack_limit;
 
 static size_t malloc_increase = 0;
 static size_t malloc_limit = GC_MALLOC_LIMIT;
@@ -811,7 +823,7 @@ ruby_stack_check()
 #if STACK_WIPE_METHOD
 void rb_gc_wipe_stack(void)
 {
-  if (curr_thread) {
+  if (rb_curr_thread) {
     VALUE *stack_end = rb_curr_thread->gc_stack_end;
     VALUE *sp = __sp();
     rb_curr_thread->gc_stack_end = sp;
@@ -1796,10 +1808,10 @@ garbage_collect()
 
 #if STACK_WIPE_SITES & 0x400
 # ifdef nativeAllocA
-  if (__stack_past (top, stack_limit)) {
-  /* allocate a large frame to ensure app stack cannot grow into GC stack */
+  if ((!rb_main_thread || rb_curr_thread == rb_main_thread) && __stack_past (top, stack_limit)) {
+    /* allocate a large frame to ensure app stack cannot grow into GC stack */
     (volatile void*) nativeAllocA(__stack_depth((void*)stack_limit,(void*)top));
-  }  
+  }
   garbage_collect_0(top);
 # else /* no native alloca() available */
   garbage_collect_0(top);
