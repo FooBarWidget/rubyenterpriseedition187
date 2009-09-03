@@ -23,7 +23,7 @@ class Installer
 		@destdir = strip_trailing_slashes(options[:destdir])
 		@install_useful_gems = options[:install_useful_gems]
 		@use_tcmalloc = options[:tcmalloc]
-		@enable_continuations = options[:enable_continuations]
+		@fast_threading = options[:fast_threading]
 		if !options[:extra_configure_args].empty?
 			@extra_configure_args = options[:extra_configure_args].join(" ")
 		end
@@ -228,13 +228,13 @@ private
 	
 	def compile_ruby
 		Dir.chdir("source") do
-			if continuations_patch_applied?
-				if !@enable_continuations
-					sh "patch -p1 -R < ../continuations.patch"
+			if fast_threading_patch_applied?
+				if !@fast_threading
+					sh "patch -p1 -R < ../fast-threading.patch"
 				end
 			else
-				if @enable_continuations
-					sh "patch -p1 < ../continuations.patch"
+				if @fast_threading
+					sh "patch -p1 < ../fast-threading.patch"
 				end
 			end
 			
@@ -588,8 +588,8 @@ private
 		end
 	end
 	
-	def continuations_patch_applied?
-		File.read("eval.c") !~ /PROT_EMPTY/
+	def fast_threading_patch_applied?
+		File.read("eval.c") =~ /PROT_EMPTY/
 	end
 end
 
@@ -627,8 +627,9 @@ parser = OptionParser.new do |opts|
 	opts.on("--no-tcmalloc", "Do not install tcmalloc support.") do
 		options[:tcmalloc] = false
 	end
-	opts.on("--enable-continuations", "Enable support for continuations.") do
-		options[:enable_continuations] = true
+	opts.on("--fast-threading", "Enable zero-copy context switching#{newline}" <<
+	                            "(experimental)") do
+		options[:fast_threading] = true
 	end
 	opts.on("-h", "--help", "Show this message.") do
 		puts opts

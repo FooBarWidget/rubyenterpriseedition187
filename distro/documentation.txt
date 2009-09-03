@@ -224,20 +224,6 @@ Please note that enabling `--enable-pthread` will make the Ruby interpreter abou
 50% slower. It is for this reason that we don't recommend enabling `--enable-shared`
 on server environments, although it's fine for desktop environments.
 
-=== Support for continuations and `--enable-continuations`
-
-The zero-threading context switching functionality that's included in REE is incompatible
-with continuations support. Continuations are therefore disabled by default in REE. If
-you really need continuations then you can enable support for continuations by passing
-`--enable-continuations` to the installer, like this:
-
----------------------------------------------------------
-./ruby-enterprise-X.X.X/installer --enable-continuations
----------------------------------------------------------
-
-Please note that doing so will result in slower threading.
-
-
 === How REE installs itself into the system
 By default, REE installs itself into a directory in '/opt'. If you already had a
 Ruby interpreter installed (typically in '/usr'; let's call this 'the system Ruby
