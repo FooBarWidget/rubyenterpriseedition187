@@ -13373,6 +13373,10 @@ rb_thread_atfork()
     main_thread = curr_thread;
     curr_thread->next = curr_thread;
     curr_thread->prev = curr_thread;
+#if defined(HAVE_SETITIMER)
+    rb_thread_stop_timer();
+    thread_init = 0;
+#endif
 }
 
 static inline void
