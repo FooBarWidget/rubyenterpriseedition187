@@ -20,7 +20,7 @@ def create_fakeroot
 	sh "rm -rf fakeroot"
 	sh "mkdir fakeroot"
 	fakeroot = File.expand_path("fakeroot")
-	sh "#{distdir}/installer --auto='/opt/ruby-enterprise' --destdir='#{fakeroot}' #{ENV['ARGS']}"
+	sh "#{distdir}/installer --auto='/usr/local' --destdir='#{fakeroot}' #{ENV['ARGS']}"
 	each_elf_binary(fakeroot) do |filename|
 		sh "strip --strip-debug '#{filename}'"
 	end
