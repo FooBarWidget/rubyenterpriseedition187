@@ -26,7 +26,7 @@ const int ruby_patchlevel = RUBY_PATCHLEVEL;
 const char *ruby_description;
 const char *ruby_copyright;
 
-#define REE_VERSION "20090906"
+#define REE_VERSION "20090928"
 
 void
 Init_version()
