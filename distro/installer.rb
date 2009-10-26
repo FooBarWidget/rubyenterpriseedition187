@@ -484,7 +484,15 @@ private
 		return @use_tcmalloc &&
 		       RUBY_PLATFORM !~ /solaris/ &&
 		       RUBY_PLATFORM !~ /openbsd/ &&
-		       RUBY_PLATFORM !~ /arm/
+		       RUBY_PLATFORM !~ /arm/ &&
+		       # tcmalloc has issues on Snow Leopard, but works fine on Leopard.
+		       (RUBY_PLATFORM !~ /darwin/ || osx_kernel_major_release_version <= 9)
+	end
+	
+	def osx_kernel_major_release_version
+		release = `uname -r`.strip
+		release.gsub!(/\..*/, '')
+		return release.to_i
 	end
 	
 	def platform_uses_two_level_namespace_for_dynamic_libraries?
