@@ -182,19 +182,19 @@ private
 	end
 	
 	def configure_tcmalloc
-		return configure_autoconf_package('source/distro/google-perftools-1.3',
+		return configure_autoconf_package('source/distro/google-perftools-1.4',
 			'the memory allocator for Ruby Enterprise Edition',
 			'--disable-dependency-tracking')
 	end
 	
 	def compile_tcmalloc
-		Dir.chdir('source/distro/google-perftools-1.3') do
+		Dir.chdir('source/distro/google-perftools-1.4') do
 			return sh("make libtcmalloc_minimal.la")
 		end
 	end
 	
 	def install_tcmalloc
-		return install_autoconf_package('source/distro/google-perftools-1.3',
+		return install_autoconf_package('source/distro/google-perftools-1.4',
 		  'the memory allocator for Ruby Enterprise Edition') do
 			sh("mkdir", "-p", "#{@destdir}#{@prefix}/lib") &&
 			# Remove existing .so files so that the copy operation doesn't
