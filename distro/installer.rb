@@ -352,7 +352,7 @@ private
 		gem_names = []
 		if @install_useful_gems
 			gem_names += ["passenger", "rake", "rails", "fastthread",
-			              "rack", mysql_gem, "sqlite3-ruby", "postgres"]
+			              "rack", mysql_gem, "sqlite3-ruby", "pg"]
 		end
 		failed_gems = []
 		
