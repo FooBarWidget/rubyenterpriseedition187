@@ -132,6 +132,7 @@ desc "Test the installer script. Pass extra arguments to the installer with ARGS
 task :test_installer do
 	distdir = "/tmp/r8ee-test"
 	create_distdir(distdir)
+	sh "ln -sf `pwd`/distro/installer.rb #{distdir}/installer.rb"
 	sh "#{distdir}/installer #{ENV['ARGS']}"
 end
 
