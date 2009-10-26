@@ -209,7 +209,7 @@ private
 	def configure_ruby
 		return configure_autoconf_package('source', 'Ruby Enterprise Edition',
 			"--enable-mbari-api #{@extra_configure_args} " <<
-			"CFLAGS='-g -Os -fno-stack-protector #{ENV['CFLAGS']}'")
+			"CFLAGS='-g -Os -fno-strict-aliasing #{ENV['CFLAGS']}'")
 	end
 	
 	def compile_system_allocator
