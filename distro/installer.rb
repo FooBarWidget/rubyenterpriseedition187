@@ -11,6 +11,7 @@ class Installer
 	REQUIRED_DEPENDENCIES = [
 		Dependencies::CC,
 		Dependencies::CXX,
+		Dependencies::Make,
 		Dependencies::Zlib_Dev,
 		Dependencies::OpenSSL_Dev,
 		Dependencies::Readline_Dev
