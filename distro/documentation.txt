@@ -146,7 +146,7 @@ cd ../..
 Run the configure script:
 
 --------------------------
-./configure --prefix=$PREFIX
+./configure --prefix=$PREFIX --enable-mbari-api CFLAGS='-g -Os -fno-strict-aliasing'
 --------------------------
 
 ==== Step 5: Compiling and installing the system_allocator library (MacOS X only)
